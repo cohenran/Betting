@@ -1,0 +1,9 @@
+target/
+*.log
+logs/
+.idea/
+*.iml
+.vscode/
+.DS_Store
+# Playwright browser cache if it is ever placed inside the project
+playwright/

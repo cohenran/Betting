@@ -1,0 +1,121 @@
+spring:
+  application:
+    name: sportpredict
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/sportpredict}
+    username: ${DB_USER:sportpredict}
+    password: ${DB_PASSWORD:sportpredict}
+    hikari:
+      maximum-pool-size: 12
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        order_inserts: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  threads:
+    virtual:
+      enabled: true
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: ${PORT:8090}
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+logging:
+  level:
+    il.co.sportpredict: INFO
+
+sportpredict:
+  # Admin endpoints (/api/admin/**) require this token in the X-Admin-Token header.
+  admin-token: ${ADMIN_TOKEN:change-me}
+
+  providers:
+    api-sports:
+      enabled: ${APISPORTS_ENABLED:true}
+      key: ${APISPORTS_KEY:}
+      # Free tier is 10 req/min, 100 req/day. Raise once you upgrade.
+      requests-per-minute: ${APISPORTS_RPM:10}
+      daily-limit: ${APISPORTS_DAILY:100}
+      football-base-url: https://v3.football.api-sports.io
+      basketball-base-url: https://v1.basketball.api-sports.io
+      mma-base-url: https://v1.mma.api-sports.io
+    allsports:
+      enabled: ${ALLSPORTS_ENABLED:true}
+      key: ${ALLSPORTS_KEY:}
+      requests-per-minute: ${ALLSPORTS_RPM:30}
+      daily-limit: ${ALLSPORTS_DAILY:1000}
+      base-url: https://apiv2.allsportsapi.com
+
+  ingest:
+    # api-sports league ids. 383 = Ligat ha'Al (Israel), 384 = Liga Leumit (Israel).
+    # 39 EPL, 140 La Liga, 135 Serie A, 78 Bundesliga, 61 Ligue 1, 2 UCL, 3 Europa League.
+    football-leagues: [383, 384, 39, 140, 135, 78, 61, 2, 3]
+    # allsportsapi league ids for the same competitions (verify against their /Leagues endpoint).
+    allsports-football-leagues: [149, 152, 3, 302, 207, 175, 168]
+    basketball-leagues: [12, 117, 120]
+    seasons: [2024, 2025, 2026]
+    history-days: 730
+    lookahead-days: 14
+    # every 15 min: pull fixtures from yesterday..+lookahead (results + new draws)
+    recent-cron: "0 */15 * * * *"
+    # nightly deep backfill of history, one chunk per run
+    history-cron: "0 20 3 * * *"
+    chunk-days: 10
+
+  model:
+    retrain-cron: "0 0 4 * * *"
+    min-matches-for-fit: 120
+    football:
+      half-life-days: 240
+      iterations: 500
+      learning-rate: 0.015
+      l2: 0.02
+      max-goals: 10
+      rho-min: -0.20
+      rho-max: 0.10
+      rho-steps: 31
+      ou-line: 2.5
+    elo:
+      k-football: 20.0
+      k-basketball: 20.0
+      k-ufc: 24.0
+      home-advantage: 65.0
+      initial: 1500.0
+    basketball:
+      half-life-days: 180
+      margin-sd: 11.5
+      elo-per-point: 28.0
+      home-advantage-points: 2.8
+    ufc:
+      learning-rate: 0.03
+      l2: 0.001
+      epochs-on-refit: 8
+
+  winner:
+    enabled: true
+    playwright-enabled: ${PLAYWRIGHT_ENABLED:true}
+    timeout-seconds: 45
+    user-agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    # Candidate internal JSON endpoints tried before falling back to a browser.
+    # Winner changes these; add whatever you see in DevTools -> Network.
+    json-endpoints:
+      - "https://www.winner.co.il/api/games"
+      - "https://www.winner.co.il/api/v2/games"
+      - "https://www.winner.co.il/api/betting/programs"
+    # Fuzzy-match threshold when binding a Winner line to a stored fixture.
+    match-threshold: 0.86
+    kickoff-tolerance-hours: 30

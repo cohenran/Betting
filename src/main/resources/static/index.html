@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SportPredict — מנוע חיזוי תוצאות</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+    <h1>SportPredict</h1>
+    <p class="sub">כדורגל · כדורסל · UFC — חיזוי סטטיסטי מתוצאות עבר</p>
+</header>
+
+<nav class="tabs">
+    <button class="tab active" data-tab="winner">טופס וינר</button>
+    <button class="tab" data-tab="upcoming">תחזיות</button>
+    <button class="tab" data-tab="ratings">דירוגים</button>
+    <button class="tab" data-tab="backtest">בדיקת מודל</button>
+    <button class="tab" data-tab="admin">ניהול</button>
+</nav>
+
+<main>
+    <section id="winner" class="panel active">
+        <h2>ניתוח טופס הימורים</h2>
+        <div class="row">
+            <input id="winnerUrl" type="url" placeholder="https://www.winner.co.il/משחקים/...">
+            <button id="analyzeUrl">נתח לפי כתובת</button>
+            <button id="debugUrl" class="secondary">בדיקת שליפה</button>
+        </div>
+        <details>
+            <summary>הדבקת שורות הטופס ידנית (עובד גם כשהאתר חוסם)</summary>
+            <textarea id="winnerText" rows="8"
+                      placeholder="מכבי חיפה - הפועל באר שבע 2.10 3.25 3.40&#10;ריאל מדריד - ברצלונה 1.95 3.60 3.70"></textarea>
+            <button id="analyzeText">נתח טקסט</button>
+        </details>
+        <div id="winnerMeta" class="meta"></div>
+        <div id="winnerUnmatched" class="warn"></div>
+        <div id="winnerResults"></div>
+    </section>
+
+    <section id="upcoming" class="panel">
+        <h2>משחקים קרובים</h2>
+        <div class="row">
+            <select id="upcomingSport">
+                <option value="FOOTBALL">כדורגל</option>
+                <option value="BASKETBALL">כדורסל</option>
+                <option value="MMA">UFC / MMA</option>
+            </select>
+            <select id="upcomingDays">
+                <option value="3">3 ימים</option>
+                <option value="7" selected>7 ימים</option>
+                <option value="14">14 ימים</option>
+            </select>
+            <button id="loadUpcoming">טען</button>
+        </div>
+        <div id="upcomingResults"></div>
+    </section>
+
+    <section id="ratings" class="panel">
+        <h2>דירוג Elo</h2>
+        <div class="row">
+            <select id="ratingsSport">
+                <option value="FOOTBALL">כדורגל</option>
+                <option value="BASKETBALL">כדורסל</option>
+            </select>
+            <button id="loadRatings">טען</button>
+        </div>
+        <div id="ratingsResults"></div>
+    </section>
+
+    <section id="backtest" class="panel">
+        <h2>בדיקת מודל (walk-forward)</h2>
+        <p class="hint">אימון על העבר בלבד, חיזוי הקדימה, ואז התקדמות בזמן. מספר ה־log-loss
+            חייב להיות נמוך מהבסיס כדי שהמודל יהיה שווה משהו.</p>
+        <div class="row">
+            <label>היסטוריה (ימים) <input id="btHistory" type="number" value="540"></label>
+            <label>צעד (ימים) <input id="btStep" type="number" value="7"></label>
+            <button id="runBacktest">הרץ</button>
+        </div>
+        <div id="backtestResults"></div>
+    </section>
+
+    <section id="admin" class="panel">
+        <h2>ניהול</h2>
+        <div class="row">
+            <label>Admin token <input id="adminToken" type="password" placeholder="X-Admin-Token"></label>
+            <button id="saveToken" class="secondary">שמור בדפדפן</button>
+        </div>
+        <div class="row">
+            <button id="runIngest">שאיבת נתונים עכשיו</button>
+            <button id="runLearn">למידה מתוצאות חדשות</button>
+            <button id="runRetrain">אימון מחדש מלא</button>
+            <button id="loadRuns" class="secondary">היסטוריית שאיבות</button>
+        </div>
+        <h3>מיפוי שם קבוצה מהטופס</h3>
+        <div class="row">
+            <input id="aliasRaw" placeholder="השם כפי שמופיע בטופס (עברית)">
+            <input id="aliasTeam" placeholder="שם הקבוצה במערכת (אנגלית)">
+            <select id="aliasSport">
+                <option value="FOOTBALL">כדורגל</option>
+                <option value="BASKETBALL">כדורסל</option>
+            </select>
+            <button id="saveAlias">שמור מיפוי</button>
+        </div>
+        <div id="adminResults"></div>
+    </section>
+</main>
+
+<footer>
+    <p>המודל מחזיר הסתברויות, לא ודאויות. שאיבה אוטומטית מאתרי הימורים נוגדת את תנאי השימוש שלהם.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
