@@ -22,7 +22,7 @@
         </filter>
         <encoder>
             <pattern>
-                %cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York}]) %magenta([%-25.-25thread]) %highlight([%-5level]) %green([%X{client:-?}]) %green([%X{uid:-?}]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n%appEx
+                %cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York}]) %magenta([%-25.-25thread]) %highlight([%-5level]) %green([%X{client:-?}]) %green([%X{uid:-?}]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n%ex
                 <!--%cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York}]) %magenta([%-30thread]) %highlight([%-5level]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n-->
             </pattern>
         </encoder>
