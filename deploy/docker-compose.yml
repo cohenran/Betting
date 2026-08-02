@@ -1,0 +1,24 @@
+# Local development database only. Production uses the PostgreSQL installed by
+# deploy/install-ubuntu.sh.
+#
+#   docker compose -f deploy/docker-compose.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sportpredict-db
+    environment:
+      POSTGRES_DB: sportpredict
+      POSTGRES_USER: sportpredict
+      POSTGRES_PASSWORD: sportpredict
+    ports:
+      - "5432:5432"
+    volumes:
+      - sportpredict-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sportpredict"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sportpredict-pg:

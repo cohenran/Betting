@@ -1,0 +1,170 @@
+# Seed dictionary: Hebrew name as printed on Winner forms -> canonical English name used
+# by the sports data APIs. sport = FOOTBALL | BASKETBALL | ANY.
+# Anything not listed here shows up in the UI as "unmatched" and can be mapped once
+# via POST /api/admin/alias - that mapping is stored in team_alias and reused forever.
+sport,hebrew,english
+# --- Israeli football ---
+FOOTBALL,מכבי תל אביב,Maccabi Tel Aviv
+FOOTBALL,מכבי חיפה,Maccabi Haifa
+FOOTBALL,הפועל באר שבע,Hapoel Beer Sheva
+FOOTBALL,בית"ר ירושלים,Beitar Jerusalem
+FOOTBALL,ביתר ירושלים,Beitar Jerusalem
+FOOTBALL,הפועל תל אביב,Hapoel Tel Aviv
+FOOTBALL,מכבי נתניה,Maccabi Netanya
+FOOTBALL,בני סכנין,Bnei Sakhnin
+FOOTBALL,מ.ס. אשדוד,FC Ashdod
+FOOTBALL,אשדוד,FC Ashdod
+FOOTBALL,הפועל חיפה,Hapoel Haifa
+FOOTBALL,מכבי פתח תקווה,Maccabi Petah Tikva
+FOOTBALL,הפועל פתח תקווה,Hapoel Petah Tikva
+FOOTBALL,הפועל ירושלים,Hapoel Jerusalem
+FOOTBALL,עירוני קרית שמונה,Ironi Kiryat Shmona
+FOOTBALL,הפועל קרית שמונה,Ironi Kiryat Shmona
+FOOTBALL,הפועל חדרה,Hapoel Hadera
+FOOTBALL,מכבי בני ריינה,Maccabi Bnei Reineh
+FOOTBALL,עירוני טבריה,Ironi Tiberias
+FOOTBALL,הפועל רמת גן,Hapoel Ramat Gan
+FOOTBALL,הפועל כפר סבא,Hapoel Kfar Saba
+FOOTBALL,מכבי הרצליה,Maccabi Herzliya
+FOOTBALL,הפועל נוף הגליל,Hapoel Nof HaGalil
+FOOTBALL,מ.ס. כפר קאסם,Kafr Qasim
+FOOTBALL,הפועל עפולה,Hapoel Afula
+FOOTBALL,הפועל רעננה,Hapoel Raanana
+FOOTBALL,הפועל ראשון לציון,Hapoel Rishon LeZion
+FOOTBALL,שמשון תל אביב,Shimshon Tel Aviv
+FOOTBALL,נבחרת ישראל,Israel
+# --- England ---
+FOOTBALL,מנצ'סטר סיטי,Manchester City
+FOOTBALL,מנצ'סטר יונייטד,Manchester United
+FOOTBALL,ליברפול,Liverpool
+FOOTBALL,צ'לסי,Chelsea
+FOOTBALL,ארסנל,Arsenal
+FOOTBALL,טוטנהאם,Tottenham
+FOOTBALL,ניוקאסל,Newcastle
+FOOTBALL,אסטון וילה,Aston Villa
+FOOTBALL,ווסטהאם,West Ham
+FOOTBALL,וסטהאם,West Ham
+FOOTBALL,ברייטון,Brighton
+FOOTBALL,אברטון,Everton
+FOOTBALL,פולהאם,Fulham
+FOOTBALL,נוטינגהאם פורסט,Nottingham Forest
+FOOTBALL,לסטר,Leicester
+FOOTBALL,קריסטל פאלאס,Crystal Palace
+FOOTBALL,וולבס,Wolves
+FOOTBALL,וולברהמפטון,Wolves
+FOOTBALL,ברנטפורד,Brentford
+FOOTBALL,בורנמות',Bournemouth
+FOOTBALL,לידס,Leeds
+FOOTBALL,סאות'המפטון,Southampton
+FOOTBALL,איפסוויץ',Ipswich
+FOOTBALL,נבחרת אנגליה,England
+# --- Spain ---
+FOOTBALL,ריאל מדריד,Real Madrid
+FOOTBALL,ברצלונה,Barcelona
+FOOTBALL,אתלטיקו מדריד,Atletico Madrid
+FOOTBALL,סביליה,Sevilla
+FOOTBALL,ולנסיה,Valencia
+FOOTBALL,ריאל בטיס,Real Betis
+FOOTBALL,ביטיס,Real Betis
+FOOTBALL,ויאריאל,Villarreal
+FOOTBALL,אתלטיק בילבאו,Athletic Club
+FOOTBALL,ריאל סוסיאדד,Real Sociedad
+FOOTBALL,חטאפה,Getafe
+FOOTBALL,סלטה ויגו,Celta Vigo
+FOOTBALL,נבחרת ספרד,Spain
+# --- Italy ---
+FOOTBALL,יובנטוס,Juventus
+FOOTBALL,אינטר,Inter
+FOOTBALL,מילאן,AC Milan
+FOOTBALL,נאפולי,Napoli
+FOOTBALL,רומא,Roma
+FOOTBALL,לאציו,Lazio
+FOOTBALL,אטאלנטה,Atalanta
+FOOTBALL,פיורנטינה,Fiorentina
+FOOTBALL,בולוניה,Bologna
+FOOTBALL,טורינו,Torino
+FOOTBALL,נבחרת איטליה,Italy
+# --- Germany ---
+FOOTBALL,באיירן מינכן,Bayern Munich
+FOOTBALL,בורוסיה דורטמונד,Borussia Dortmund
+FOOTBALL,דורטמונד,Borussia Dortmund
+FOOTBALL,לייפציג,RB Leipzig
+FOOTBALL,באייר לוורקוזן,Bayer Leverkusen
+FOOTBALL,לוורקוזן,Bayer Leverkusen
+FOOTBALL,אינטרכט פרנקפורט,Eintracht Frankfurt
+FOOTBALL,שטוטגרט,VfB Stuttgart
+FOOTBALL,וולפסבורג,Wolfsburg
+FOOTBALL,נבחרת גרמניה,Germany
+# --- France / Netherlands / Portugal / rest ---
+FOOTBALL,פ.ס.ז',Paris Saint Germain
+FOOTBALL,פריז סן ז'רמן,Paris Saint Germain
+FOOTBALL,מארסיי,Marseille
+FOOTBALL,מונאקו,Monaco
+FOOTBALL,ליון,Lyon
+FOOTBALL,ליל,Lille
+FOOTBALL,אייאקס,Ajax
+FOOTBALL,פיינורד,Feyenoord
+FOOTBALL,פ.ס.וו,PSV Eindhoven
+FOOTBALL,אז אלקמאר,AZ Alkmaar
+FOOTBALL,פורטו,FC Porto
+FOOTBALL,בנפיקה,Benfica
+FOOTBALL,ספורטינג ליסבון,Sporting CP
+FOOTBALL,סלטיק,Celtic
+FOOTBALL,ריינג'רס,Rangers
+FOOTBALL,גלאטסראיי,Galatasaray
+FOOTBALL,פנרבחצ'ה,Fenerbahce
+FOOTBALL,אולימפיאקוס,Olympiacos
+FOOTBALL,פנאתינייקוס,Panathinaikos
+FOOTBALL,אא"ק אתונה,AEK Athens
+FOOTBALL,קלוב בריג',Club Brugge
+FOOTBALL,אנדרלכט,Anderlecht
+FOOTBALL,זניט,Zenit
+FOOTBALL,דינמו זאגרב,Dinamo Zagreb
+FOOTBALL,רד בול זאלצבורג,Red Bull Salzburg
+FOOTBALL,שחטאר דונייצק,Shakhtar Donetsk
+FOOTBALL,קופנהגן,FC Copenhagen
+FOOTBALL,נבחרת צרפת,France
+FOOTBALL,נבחרת ברזיל,Brazil
+FOOTBALL,נבחרת ארגנטינה,Argentina
+FOOTBALL,נבחרת פורטוגל,Portugal
+FOOTBALL,נבחרת הולנד,Netherlands
+FOOTBALL,נבחרת בלגיה,Belgium
+FOOTBALL,נבחרת קרואטיה,Croatia
+# --- Israeli basketball ---
+BASKETBALL,מכבי תל אביב,Maccabi Tel Aviv
+BASKETBALL,הפועל תל אביב,Hapoel Tel Aviv
+BASKETBALL,הפועל ירושלים,Hapoel Jerusalem
+BASKETBALL,הפועל חולון,Hapoel Holon
+BASKETBALL,מכבי ראשון לציון,Maccabi Rishon LeZion
+BASKETBALL,עירוני נס ציונה,Ironi Ness Ziona
+BASKETBALL,בני הרצליה,Bnei Herzliya
+BASKETBALL,הפועל גליל עליון,Hapoel Galil Elyon
+BASKETBALL,עירוני קרית אתא,Ironi Kiryat Ata
+BASKETBALL,מכבי רעננה,Maccabi Raanana
+BASKETBALL,אליצור נתניה,Elitzur Netanya
+BASKETBALL,הפועל באר שבע,Hapoel Beer Sheva
+BASKETBALL,מכבי חיפה,Maccabi Haifa
+# --- Euroleague / NBA ---
+BASKETBALL,ריאל מדריד,Real Madrid
+BASKETBALL,ברצלונה,Barcelona
+BASKETBALL,פנאתינייקוס,Panathinaikos
+BASKETBALL,אולימפיאקוס,Olympiacos
+BASKETBALL,פנרבחצ'ה,Fenerbahce
+BASKETBALL,ז'לגיריס,Zalgiris
+BASKETBALL,מונאקו,Monaco
+BASKETBALL,בסקוניה,Baskonia
+BASKETBALL,ויראוס בולוניה,Virtus Bologna
+BASKETBALL,אולימפיה מילאנו,Olimpia Milano
+BASKETBALL,אלבה ברלין,Alba Berlin
+BASKETBALL,באיירן מינכן,Bayern Munich
+BASKETBALL,פריז,Paris Basketball
+BASKETBALL,ולנסיה,Valencia Basket
+BASKETBALL,פרטיזן,Partizan
+BASKETBALL,כוכבים אדומים,Crvena Zvezda
+BASKETBALL,אנדורה,Andorra
+BASKETBALL,בוסטון סלטיקס,Boston Celtics
+BASKETBALL,לוס אנג'לס לייקרס,Los Angeles Lakers
+BASKETBALL,גולדן סטייט ווריורס,Golden State Warriors
+BASKETBALL,מיאמי היט,Miami Heat
+BASKETBALL,דנבר נאגטס,Denver Nuggets
+BASKETBALL,מילווקי באקס,Milwaukee Bucks

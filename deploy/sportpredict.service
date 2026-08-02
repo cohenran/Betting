@@ -1,0 +1,28 @@
+[Unit]
+Description=SportPredict prediction engine
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sportpredict
+Group=sportpredict
+WorkingDirectory=/opt/sportpredict
+EnvironmentFile=/etc/sportpredict/sportpredict.env
+ExecStart=/usr/bin/java -Xms256m -Xmx1g -jar /opt/sportpredict/sportpredict.jar
+Restart=always
+RestartSec=10
+SuccessExitStatus=143
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sportpredict
+
+# Hardening. Chromium needs a writable temp dir and its own namespace, so no
+# PrivateUsers / NoNewPrivileges here - they break the headless browser.
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/sportpredict
+
+[Install]
+WantedBy=multi-user.target
