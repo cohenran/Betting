@@ -63,7 +63,16 @@ public class IngestScheduler {
             }
             LocalDate from = to.minusDays(props.getIngest().getChunkDays());
             try {
-                ingest.ingestRange(from, to, EnumSet.of(sport));
+                IngestService.IngestSummary summary = ingest.ingestRange(from, to, EnumSet.of(sport));
+                
+                boolean allFailed = !summary.jobs().isEmpty() && summary.jobs().stream()
+                        .allMatch(j -> j.error() != null);
+                
+                if (allFailed) {
+                    log.warn("All providers failed for {} {}..{}. Pausing history backfill for this sport.", sport, from, to);
+                    continue;
+                }
+
                 cursor.setOldestPulled(from);
                 cursor.setUpdatedAt(java.time.Instant.now());
                 cursors.save(cursor);

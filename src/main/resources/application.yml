@@ -69,11 +69,11 @@ sportpredict:
     basketball-leagues: [12, 117, 120]
     seasons: [2024, 2025, 2026]
     history-days: 730
-    lookahead-days: 14
-    # every 15 min: pull fixtures from yesterday..+lookahead (results + new draws)
-    recent-cron: "0 */15 * * * *"
-    # nightly deep backfill of history, one chunk per run
-    history-cron: "0 20 3 * * *"
+    lookahead-days: 3
+    # every 4 hours: pull fixtures from yesterday..+lookahead (results + new draws)
+    recent-cron: "0 30 */4 * * *"
+    # hourly deep backfill of history, one chunk per run
+    history-cron: "0 0 * * * *"
     chunk-days: 10
 
   model:
