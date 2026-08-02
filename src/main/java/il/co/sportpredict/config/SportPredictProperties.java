@@ -15,6 +15,7 @@ public class SportPredictProperties {
     private Ingest ingest = new Ingest();
     private Model model = new Model();
     private Winner winner = new Winner();
+    private PaperBetting paperBetting = new PaperBetting();
 
     @Data
     public static class Providers {
@@ -111,5 +112,13 @@ public class SportPredictProperties {
         private List<String> jsonEndpoints = new ArrayList<>();
         private double matchThreshold = 0.86;
         private int kickoffToleranceHours = 30;
+    }
+
+    @Data
+    public static class PaperBetting {
+        private boolean enabled = true;
+        private String winnerUrl = "https://www.winner.co.il/mainbook/sport";
+        private String cron = "0 0 8 * * *"; // Morning run: resolves yesterday, places today
+        private double startingBankroll = 1000.0;
     }
 }

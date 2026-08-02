@@ -117,5 +117,10 @@ sportpredict:
       - "https://www.winner.co.il/api/v2/games"
       - "https://www.winner.co.il/api/betting/programs"
     # Fuzzy-match threshold when binding a Winner line to a stored fixture.
-    match-threshold: 0.86
     kickoff-tolerance-hours: 30
+
+  paper-betting:
+    enabled: true
+    winner-url: "https://www.winner.co.il/mainbook/sport"
+    cron: "0 0 8 * * *"
+    starting-bankroll: 1000.0
