@@ -21,6 +21,10 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+echo "==> pulling latest code"
+cd "$REPO_DIR"
+git pull origin master
+
 echo "==> installing packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
