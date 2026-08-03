@@ -22,8 +22,8 @@
         </filter>
         <encoder>
             <pattern>
-                %cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York}]) %magenta([%-25.-25thread]) %highlight([%-5level]) %green([%X{client:-?}]) %green([%X{uid:-?}]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n%ex
-                <!--%cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York}]) %magenta([%-30thread]) %highlight([%-5level]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n-->
+                %cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem}]) %magenta([%-25.-25thread]) %highlight([%-5level]) %green([%X{client:-?}]) %green([%X{uid:-?}]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n%ex
+                <!--%cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem}]) %magenta([%-30thread]) %highlight([%-5level]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n-->
             </pattern>
         </encoder>
     </appender>
@@ -57,12 +57,12 @@
         </rollingPolicy>
         <encoder>
             <pattern>
-                %cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York}]) %magenta([%-30thread]) %highlight([%-5level]) %green([%X{client:-?}]) %green([%X{uid:-?}]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %m%n%rEx{full,
+                %cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem}]) %magenta([%-30thread]) %highlight([%-5level]) %green([%X{client:-?}]) %green([%X{uid:-?}]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %m%n%rEx{full,
                 org.,
                 java.,
                 $$
                 }
-                <!--%cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York}]) %magenta([%-30thread]) %highlight([%-5level]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n-->
+                <!--%cyan([%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem}]) %magenta([%-30thread]) %highlight([%-5level]) %boldYellow([%-29logger{29}.%-12M]):%yellow([%-3line]) %msg%n-->
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>
@@ -96,7 +96,7 @@
             <maxHistory>365</maxHistory>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
+            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>
@@ -115,7 +115,7 @@
             <maxHistory>365</maxHistory>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
+            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>
@@ -136,7 +136,7 @@
             <maxHistory>30</maxHistory>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York} %thread %-5level %logger{36}:[%line] [%X{client:-?}][%X{uid:-?}] %msg%n
+            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem} %thread %-5level %logger{36}:[%line] [%X{client:-?}][%X{uid:-?}] %msg%n
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>
@@ -178,7 +178,7 @@
             <maxHistory>4</maxHistory>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
+            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>
@@ -220,7 +220,7 @@
             <maxHistory>4</maxHistory>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
+            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem} %thread %-5level %logger{36}.%-12M:[%line][%X{client:-?}] [%X{uid:-?}] %msg%n
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>
@@ -262,7 +262,7 @@
             <maxHistory>365</maxHistory>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York} %thread %-5level %logger{36}:[%line] [%X{client:-?}][%X{uid:-?}] %msg%n
+            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem} %thread %-5level %logger{36}:[%line] [%X{client:-?}][%X{uid:-?}] %msg%n
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>
@@ -304,7 +304,7 @@
             <maxHistory>365</maxHistory>
         </rollingPolicy>
         <encoder>
-            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,America/New_York} %thread %-5level %logger{36}:[%line] [%X{client:-?}][%X{uid:-?}] %msg%n
+            <pattern>%d{dd-MM-yyyy HH:mm:ss.SSS,Asia/Jerusalem} %thread %-5level %logger{36}:[%line] [%X{client:-?}][%X{uid:-?}] %msg%n
             </pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
         </encoder>

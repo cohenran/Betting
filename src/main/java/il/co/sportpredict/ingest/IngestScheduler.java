@@ -36,7 +36,7 @@ public class IngestScheduler {
     private final IngestCursorRepository cursors;
     private final SportPredictProperties props;
 
-    @Scheduled(cron = "${sportpredict.ingest.recent-cron}")
+    @Scheduled(cron = "${sportpredict.ingest.recent-cron}", zone = "Asia/Jerusalem")
     public void ingestRecent() {
         LocalDate from = LocalDate.now().minusDays(2);
         LocalDate to = LocalDate.now().plusDays(props.getIngest().getLookaheadDays());
@@ -48,7 +48,7 @@ public class IngestScheduler {
         }
     }
 
-    @Scheduled(cron = "${sportpredict.ingest.history-cron}")
+    @Scheduled(cron = "${sportpredict.ingest.history-cron}", zone = "Asia/Jerusalem")
     public void ingestHistoryChunk() {
         LocalDate limit = LocalDate.now().minusDays(props.getIngest().getHistoryDays());
         for (Sport sport : Sport.values()) {
@@ -82,7 +82,7 @@ public class IngestScheduler {
         }
     }
 
-    @Scheduled(cron = "${sportpredict.model.retrain-cron}")
+    @Scheduled(cron = "${sportpredict.model.retrain-cron}", zone = "Asia/Jerusalem")
     public void retrain() {
         try {
             LearningService.RefitReport report = learning.rebuildAndRefit();

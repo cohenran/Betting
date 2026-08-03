@@ -27,7 +27,7 @@ public class PaperBetManager {
     private static final String HALF_KELLY_CSV = "paper_bets_half_kelly.csv";
     private static final String FULL_KELLY_CSV = "paper_bets_full_kelly.csv";
 
-    @Scheduled(cron = "${sportpredict.paper-betting.cron:0 0 8 * * *}")
+    @Scheduled(cron = "${sportpredict.paper-betting.cron:0 0 8 * * *}", zone = "Asia/Jerusalem")
     public void runDailyTask() {
         if (!props.getPaperBetting().isEnabled()) {
             return;
