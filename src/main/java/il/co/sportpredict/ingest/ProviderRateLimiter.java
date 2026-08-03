@@ -26,8 +26,10 @@ public class ProviderRateLimiter {
 
     public ProviderRateLimiter(String provider, int requestsPerMinute, int dailyLimit) {
         this.provider = provider;
-        int rpm = Math.max(1, requestsPerMinute);
-        this.tokensPerMs = rpm / 60_000.0;
+        // Add a 10% safety margin so we don't accidentally slip an extra request 
+        // into the strict 60-second sliding window due to millisecond rounding.
+        double safeRpm = requestsPerMinute > 1 ? requestsPerMinute * 0.9 : 1.0;
+        this.tokensPerMs = safeRpm / 60_000.0;
         this.burst = 1.0;
         this.tokens = 1.0;
         this.dailyLimit = dailyLimit <= 0 ? Integer.MAX_VALUE : dailyLimit;
