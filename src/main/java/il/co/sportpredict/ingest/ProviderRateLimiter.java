@@ -28,8 +28,8 @@ public class ProviderRateLimiter {
         this.provider = provider;
         int rpm = Math.max(1, requestsPerMinute);
         this.tokensPerMs = rpm / 60_000.0;
-        this.burst = rpm;
-        this.tokens = rpm;
+        this.burst = 1.0;
+        this.tokens = 1.0;
         this.dailyLimit = dailyLimit <= 0 ? Integer.MAX_VALUE : dailyLimit;
     }
 
