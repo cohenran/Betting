@@ -24,7 +24,7 @@ public final class ScoreGrid {
     private ScoreGrid() {
     }
 
-    public static Result compute(DixonColesParams params, double lambda, double mu, int maxGoals, double ouLine) {
+    public static Result compute(DixonColesParams params, double lambda, double mu, int maxGoals, double ouLine, String compId) {
         double[] ph = poisson(lambda, maxGoals);
         double[] pa = poisson(mu, maxGoals);
 
@@ -32,7 +32,7 @@ public final class ScoreGrid {
         double[][] grid = new double[maxGoals + 1][maxGoals + 1];
         for (int x = 0; x <= maxGoals; x++) {
             for (int y = 0; y <= maxGoals; y++) {
-                double cell = params.tau(x, y, lambda, mu) * ph[x] * pa[y];
+                double cell = params.tau(x, y, lambda, mu, compId) * ph[x] * pa[y];
                 grid[x][y] = cell;
                 total += cell;
             }

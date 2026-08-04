@@ -61,20 +61,24 @@ public class FootballPredictor {
         Long homeId = fixture.getHomeTeam().getId();
         Long awayId = fixture.getAwayTeam().getId();
 
+        String compId = fixture.getCompetition() != null ? String.valueOf(fixture.getCompetition().getId()) : "0";
+
         boolean coldStart = !p.knows(homeId) || !p.knows(awayId);
         double attackHome = strength(p, fixture.getHomeTeam(), true);
         double defenseHome = strength(p, fixture.getHomeTeam(), false);
         double attackAway = strength(p, fixture.getAwayTeam(), true);
         double defenseAway = strength(p, fixture.getAwayTeam(), false);
 
-        double lambda = p.getBaseGoals() * Math.exp(attackHome - defenseAway + p.getHomeAdvantage());
-        double mu = p.getBaseGoals() * Math.exp(attackAway - defenseHome);
-        lambda = clampGoals(lambda);
-        mu = clampGoals(mu);
+        // Built from the strength values rather than params.lambdaHome(): that method reads
+        // attack/defense straight from the fit, which would discard the Elo stand-in for a
+        // team the fit has never seen.
+        double base = p.baseGoalsOf(compId);
+        double lambda = clampGoals(base * Math.exp(attackHome - defenseAway + p.homeAdvantageOf(compId)));
+        double mu = clampGoals(base * Math.exp(attackAway - defenseHome));
 
         double line = props.getModel().getFootball().getOuLine();
         ScoreGrid.Result grid = ScoreGrid.compute(p, lambda, mu,
-                props.getModel().getFootball().getMaxGoals(), line);
+                props.getModel().getFootball().getMaxGoals(), line, compId);
 
         List<Map<String, Object>> topScores = grid.scores().stream().limit(5)
                 .map(e -> Map.<String, Object>of("score", e.getKey(), "p", round(e.getValue())))
@@ -86,7 +90,7 @@ public class FootballPredictor {
         detail.put("topScores", topScores);
         detail.put("coldStart", coldStart);
         detail.put("fitSampleSize", p.getSampleSize());
-        detail.put("rho", round(p.getRho()));
+        detail.put("rho", round(p.rhoOf(compId)));
         detail.put("eloHome", round(elo.ratingFor(fixture.getHomeTeam(), Sport.FOOTBALL).getElo()));
         detail.put("eloAway", round(elo.ratingFor(fixture.getAwayTeam(), Sport.FOOTBALL).getElo()));
 

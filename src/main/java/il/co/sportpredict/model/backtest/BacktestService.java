@@ -127,10 +127,11 @@ public class BacktestService {
                 if (!params.knows(f.getHomeTeam().getId()) || !params.knows(f.getAwayTeam().getId())) {
                     continue;
                 }
-                double lambda = params.lambdaHome(f.getHomeTeam().getId(), f.getAwayTeam().getId());
-                double mu = params.lambdaAway(f.getHomeTeam().getId(), f.getAwayTeam().getId());
+                String compId = f.getCompetition() != null ? String.valueOf(f.getCompetition().getId()) : "0";
+                double lambda = params.lambdaHome(f.getHomeTeam().getId(), f.getAwayTeam().getId(), compId);
+                double mu = params.lambdaAway(f.getHomeTeam().getId(), f.getAwayTeam().getId(), compId);
                 ScoreGrid.Result grid = ScoreGrid.compute(params, lambda, mu,
-                        props.getModel().getFootball().getMaxGoals(), props.getModel().getFootball().getOuLine());
+                        props.getModel().getFootball().getMaxGoals(), props.getModel().getFootball().getOuLine(), compId);
 
                 int actual = outcomeIndex(f);
                 double[] p = {grid.pHome(), grid.pDraw(), grid.pAway()};

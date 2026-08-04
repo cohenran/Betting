@@ -34,13 +34,13 @@ class DixonColesTrainerTest {
         assertThat(params.getSampleSize()).isEqualTo(matches.size());
         assertThat(params.attackOf(teams.get(0).getId()))
                 .isGreaterThan(params.attackOf(teams.get(7).getId()));
-        assertThat(params.getHomeAdvantage()).isBetween(0.05, 0.6);
+        assertThat(params.getGlobalHomeAdvantage()).isBetween(0.05, 0.6);
         // Strongest at home against weakest must be a clear favourite.
-        double lambda = params.lambdaHome(teams.get(0).getId(), teams.get(7).getId());
-        double mu = params.lambdaAway(teams.get(0).getId(), teams.get(7).getId());
+        double lambda = params.lambdaHome(teams.get(0).getId(), teams.get(7).getId(), "0");
+        double mu = params.lambdaAway(teams.get(0).getId(), teams.get(7).getId(), "0");
         assertThat(lambda).isGreaterThan(mu);
 
-        ScoreGrid.Result grid = ScoreGrid.compute(params, lambda, mu, 10, 2.5);
+        ScoreGrid.Result grid = ScoreGrid.compute(params, lambda, mu, 10, 2.5, "0");
         assertThat(grid.pHome() + grid.pDraw() + grid.pAway()).isCloseTo(1.0, org.assertj.core.data.Offset.offset(1e-9));
         assertThat(grid.pHome()).isGreaterThan(grid.pAway());
     }
@@ -51,7 +51,7 @@ class DixonColesTrainerTest {
         assertThat(params.getSampleSize()).isZero();
         assertThat(params.knows(1L)).isFalse();
         // Unknown teams fall back to the league average, so the model still returns a number.
-        assertThat(params.lambdaHome(1L, 2L)).isGreaterThan(0);
+        assertThat(params.lambdaHome(1L, 2L, "0")).isGreaterThan(0);
     }
 
     private SportPredictProperties.Football config() {

@@ -118,6 +118,13 @@ public class SportPredictProperties {
         private double rhoMax = 0.10;
         private int rhoSteps = 31;
         private double ouLine = 2.5;
+
+        /**
+         * Minimum time-weighted match count before a competition earns its own baseline.
+         * Anything thinner is pooled into the shared fallback: a one-off super cup fitted
+         * on a single 6-0 would otherwise carry that as its permanent scoring rate.
+         */
+        private double minCompetitionWeight = 40.0;
     }
 
     @Data
