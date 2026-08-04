@@ -55,6 +55,13 @@ public class SportPredictProperties {
         /** Empty means "every basketball league on the provider" - about 140 records a day. */
         private List<Integer> allsportsBasketballLeagues = new ArrayList<>();
         private List<Integer> seasons = new ArrayList<>();
+
+        /**
+         * Sports to ingest at all. Narrowing this is the cheapest way to keep the database
+         * and the nightly replay small - an unfiltered basketball feed alone brings tens of
+         * thousands of NCAA and minor-league games that no model here uses.
+         */
+        private List<Sport> sports = new ArrayList<>(List.of(Sport.FOOTBALL, Sport.BASKETBALL, Sport.MMA));
         private int historyDays = 730;
         private int lookaheadDays = 14;
         private int chunkDays = 10;

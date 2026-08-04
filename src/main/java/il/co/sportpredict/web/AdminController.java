@@ -10,7 +10,9 @@ import il.co.sportpredict.ingest.IngestService;
 import il.co.sportpredict.ingest.OddsSnapshot;
 import il.co.sportpredict.ingest.TeamResolver;
 import il.co.sportpredict.model.LearningService;
+import il.co.sportpredict.model.RetrainRunner;
 import il.co.sportpredict.model.backtest.BacktestService;
+import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.repo.FixtureSourceRepository;
 import il.co.sportpredict.repo.IngestRunRepository;
 import il.co.sportpredict.repo.TeamRepository;
@@ -40,6 +42,8 @@ public class AdminController {
     private final BacktestService backtestService;
     private final AllSportsOddsClient oddsClient;
     private final FixtureSourceRepository fixtureSources;
+    private final FixtureRepository fixtures;
+    private final RetrainRunner retrainRunner;
     private final IngestRunRepository runs;
     private final TeamRepository teams;
     private final TeamResolver teamResolver;
@@ -66,10 +70,18 @@ public class AdminController {
         return Map.of("learnedResults", learned);
     }
 
+    /** Starts a rebuild in the background and returns at once; poll /retrain-status. */
     @PostMapping("/retrain")
-    public LearningService.RefitReport retrain(@RequestHeader(value = "X-Admin-Token", required = false) String token) {
+    public Map<String, String> retrain(@RequestHeader(value = "X-Admin-Token", required = false) String token) {
         authorize(token);
-        return learning.rebuildAndRefit();
+        return Map.of("retrain", retrainRunner.start(), "status", retrainRunner.getStatus());
+    }
+
+    @GetMapping("/retrain-status")
+    public Map<String, Object> retrainStatus(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token) {
+        authorize(token);
+        return Map.of("running", retrainRunner.isRunning(), "status", retrainRunner.getStatus());
     }
 
     /** Teaches the Winner matcher a name it could not resolve. */
@@ -123,15 +135,18 @@ public class AdminController {
                 continue;
             }
             if (matched.size() < 15) {
-                Fixture fixture = source.get().getFixture();
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("fixtureId", fixture.getId());
-                row.put("match", fixture.getHomeTeam().getName() + " vs " + fixture.getAwayTeam().getName());
-                row.put("kickoff", fixture.getKickoff());
-                row.put("odds", List.of(snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway()));
-                row.put("bookmakers", snapshot.bookmakers());
-                row.put("overround", Math.round(snapshot.overround() * 1000) / 1000.0);
-                matched.add(row);
+                // Fetch-join the teams: the odds request happens outside any transaction,
+                // so the lazy proxy on fixture_source has no session to load them from.
+                fixtures.findWithTeams(source.get().getFixture().getId()).ifPresent(fixture -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("fixtureId", fixture.getId());
+                    row.put("match", fixture.getHomeTeam().getName() + " vs " + fixture.getAwayTeam().getName());
+                    row.put("kickoff", fixture.getKickoff());
+                    row.put("odds", List.of(snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway()));
+                    row.put("bookmakers", snapshot.bookmakers());
+                    row.put("overround", Math.round(snapshot.overround() * 1000) / 1000.0);
+                    matched.add(row);
+                });
             }
         }
 

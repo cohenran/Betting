@@ -76,6 +76,10 @@ sportpredict:
     # Fill this in from met=Leagues on their basketball endpoint.
     allsports-basketball-leagues: []
     seasons: [2024, 2025, 2026]
+    # Basketball is off until its league list is filled in: unfiltered, allsports returns
+    # ~1400 games per 10-day chunk (NCAA, NCAA Women, G League, MPBL...), which dominates
+    # the database and makes the nightly replay crawl. Nothing here uses those games.
+    sports: [FOOTBALL, MMA]
     history-days: 730
     # Fallback horizon when lookahead-by-provider is empty.
     lookahead-days: 14

@@ -55,6 +55,7 @@ public class IngestScheduler {
                 // api-sports pays per day of range, allsports pays once for the whole range.
                 horizons.forEach((provider, days) -> {
                     Set<Sport> sports = sportsFor(provider, props.getIngest().getRecentProviders());
+                    sports.retainAll(props.getIngest().getSports());
                     if (sports.isEmpty()) {
                         return;
                     }
@@ -92,7 +93,7 @@ public class IngestScheduler {
     @Scheduled(cron = "${sportpredict.ingest.history-cron}", zone = "Asia/Jerusalem")
     public void ingestHistoryChunk() {
         LocalDate limit = LocalDate.now().minusDays(props.getIngest().getHistoryDays());
-        for (Sport sport : Sport.values()) {
+        for (Sport sport : props.getIngest().getSports()) {
             IngestCursor cursor = cursors.findByProviderAndSport(CURSOR_PROVIDER, sport)
                     .orElseGet(() -> cursors.save(new IngestCursor(CURSOR_PROVIDER, sport)));
             LocalDate to = cursor.getOldestPulled() == null
