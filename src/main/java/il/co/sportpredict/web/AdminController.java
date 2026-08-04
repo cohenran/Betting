@@ -7,6 +7,7 @@ import il.co.sportpredict.domain.Team;
 import il.co.sportpredict.ingest.AllSportsOddsClient;
 import il.co.sportpredict.ingest.AllSportsProvider;
 import il.co.sportpredict.ingest.IngestService;
+import il.co.sportpredict.ingest.OddsBackfillService;
 import il.co.sportpredict.ingest.OddsSnapshot;
 import il.co.sportpredict.ingest.TeamResolver;
 import il.co.sportpredict.model.LearningService;
@@ -45,6 +46,7 @@ public class AdminController {
     private final BacktestService backtestService;
     private final BasketballBacktestService basketballBacktest;
     private final MarketBenchmarkService marketBenchmark;
+    private final OddsBackfillService oddsBackfill;
     private final PaperBetManager paperBets;
     private final AllSportsOddsClient oddsClient;
     private final FixtureSourceRepository fixtureSources;
@@ -152,8 +154,27 @@ public class AdminController {
     }
 
     /**
-     * Model vs bookmakers on the same settled matches. This is the fast route to the only
-     * question that matters - the paper trade needs well over a year to answer it.
+     * Pulls historical prices into market_odds so the walk-forward backtest can score the
+     * model against the bookmakers. Chunked, because the provider returns 500 for a wide
+     * range. Run this before /backtest to get the market comparison.
+     */
+    @PostMapping("/odds-backfill")
+    public OddsBackfillService.BackfillReport oddsBackfill(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(defaultValue = "FOOTBALL") Sport sport,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @RequestParam(defaultValue = "3") int chunkDays) {
+        authorize(token);
+        return oddsBackfill.backfill(sport, from, to, chunkDays);
+    }
+
+    /**
+     * Quick model-vs-market check on settled matches, using the currently fitted model.
+     *
+     * <p>Prefer the market comparison inside /backtest: this one scores a model that was
+     * fitted on history including these matches, so its number is optimistic. Useful only
+     * as a one-directional check - losing here is conclusive, winning is not.
      */
     @GetMapping("/market-benchmark")
     public MarketBenchmarkService.Comparison marketBenchmark(

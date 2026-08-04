@@ -2,12 +2,14 @@ package il.co.sportpredict.model.backtest;
 
 import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.domain.Fixture;
+import il.co.sportpredict.domain.MarketOdds;
 import il.co.sportpredict.domain.Sport;
 import il.co.sportpredict.model.ModelStateStore;
 import il.co.sportpredict.model.football.DixonColesParams;
 import il.co.sportpredict.model.football.DixonColesTrainer;
 import il.co.sportpredict.model.football.ScoreGrid;
 import il.co.sportpredict.repo.FixtureRepository;
+import il.co.sportpredict.repo.MarketOddsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,7 +17,9 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -35,6 +39,7 @@ public class BacktestService {
     public static final String STATE_KEY = "football-backtest";
 
     private final FixtureRepository fixtures;
+    private final MarketOddsRepository marketOdds;
     private final DixonColesTrainer trainer;
     private final ModelStateStore store;
     private final SportPredictProperties props;
@@ -81,7 +86,29 @@ public class BacktestService {
             double baselineLogLoss,
             double baselineBrier,
             double baselineAccuracy,
-            List<Bucket> calibration
+            List<Bucket> calibration,
+            MarketComparison market
+    ) {
+    }
+
+    /**
+     * Model against the bookmakers on the subset of test matches that have stored prices.
+     *
+     * <p>Both numbers come from the same matches, and the model's predictions are the
+     * walk-forward ones - fitted only on earlier matches - so this is a fair comparison
+     * rather than a model scored on its own training data.
+     *
+     * <p>This is the number that decides whether betting could ever be profitable. Beating
+     * league base rates is easy; beating the closing price is the actual bar.
+     */
+    public record MarketComparison(
+            int matches,
+            double modelLogLoss,
+            double marketLogLoss,
+            double modelAccuracy,
+            double marketAccuracy,
+            double averageOverround,
+            String verdict
     ) {
     }
 
@@ -110,6 +137,17 @@ public class BacktestService {
         int[] bucketCount = new int[10];
         double[] bucketPredicted = new double[10];
         int[] bucketHit = new int[10];
+
+        // Market prices indexed once; the table holds a few thousand rows at most.
+        Map<Long, MarketOdds> oddsByFixture = new HashMap<>();
+        marketOdds.findBySport(Sport.FOOTBALL)
+                .forEach(o -> oddsByFixture.put(o.getFixture().getId(), o));
+        double marketModelLogLoss = 0;
+        double marketLogLoss = 0;
+        int marketModelCorrect = 0;
+        int marketCorrect = 0;
+        double overroundSum = 0;
+        int marketMatches = 0;
 
         int cursor = 0;
         while (cursor < test.size()) {
@@ -155,6 +193,23 @@ public class BacktestService {
                     bucketHit[bucket]++;
                 }
                 scored++;
+
+                // Same match, same walk-forward prediction, scored against the book.
+                MarketOdds odds = oddsByFixture.get(f.getId());
+                if (odds != null && !odds.twoWay()) {
+                    double[] market = odds.impliedProbabilities();
+                    marketModelLogLoss += -Math.log(Math.max(p[actual], 1e-9));
+                    marketLogLoss += -Math.log(Math.max(market[actual], 1e-9));
+                    if (argmax(p) == actual) {
+                        marketModelCorrect++;
+                    }
+                    if (argmax(market) == actual) {
+                        marketCorrect++;
+                    }
+                    overroundSum += 1 / odds.getMedianHome() + 1 / odds.getMedianDraw()
+                            + 1 / odds.getMedianAway() - 1;
+                    marketMatches++;
+                }
             }
         }
 
@@ -174,10 +229,28 @@ public class BacktestService {
         log.info("backtest: {} matches scored, logLoss={} (baseline {})",
                 scored, round(sumLogLoss / scored), round(baseLogLoss / scored));
 
+        MarketComparison comparison = null;
+        if (marketMatches > 0) {
+            double model = marketModelLogLoss / marketMatches;
+            double market = marketLogLoss / marketMatches;
+            comparison = new MarketComparison(marketMatches,
+                    round(model), round(market),
+                    round((double) marketModelCorrect / marketMatches),
+                    round((double) marketCorrect / marketMatches),
+                    round(overroundSum / marketMatches),
+                    model < market
+                            ? "model beats the market by %.4f nats/match on %d matches".formatted(
+                                    market - model, marketMatches)
+                            : "model loses to the market by %.4f nats/match - betting into these prices "
+                                    + "has negative expectation".formatted(model - market));
+            log.info("market comparison: model={} market={} over {} matches",
+                    round(model), round(market), marketMatches);
+        }
+
         return new BacktestResult(Sport.FOOTBALL.name(), splitIndex, scored, refits,
                 round(sumLogLoss / scored), round(sumBrier / scored), round((double) correct / scored),
                 round(baseLogLoss / scored), round(baseBrier / scored), round((double) baseCorrect / scored),
-                calibration);
+                calibration, comparison);
     }
 
     private double[] outcomeFrequencies(List<Fixture> matches) {
