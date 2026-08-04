@@ -72,14 +72,17 @@ sportpredict:
     #         3 UCL, 4 Europa League, 683 Conference League.
     allsports-football-leagues: [202, 201, 203, 358, 573, 152, 302, 207, 175, 3, 4, 683]
     basketball-leagues: [12, 117, 120]
-    # Empty = every basketball league allsports carries (~1400 records per 10-day chunk).
-    # Fill this in from met=Leagues on their basketball endpoint.
-    allsports-basketball-leagues: []
+    # allsports basketball league keys, confirmed against met=Leagues.
+    # 766 NBA, 784 Euroleague, 763 Israel Super League, 1078 Israel Liga Leumit,
+    # 804 Israel Cup, 956 Israel League Cup.
+    # Deliberately excluded: Summer League (exhibition, teaches the model nothing), G League,
+    # NCAA and NCAA Women. Leaving this empty pulls ~1400 games per 10-day chunk of exactly
+    # those, which is what previously swamped the database.
+    # NBA Cup (12045) and In-Season Tournament (10078) are omitted on purpose - those games
+    # already count under 766 and would arrive twice.
+    allsports-basketball-leagues: [766, 784, 763, 1078, 804, 956]
     seasons: [2024, 2025, 2026]
-    # Basketball is off until its league list is filled in: unfiltered, allsports returns
-    # ~1400 games per 10-day chunk (NCAA, NCAA Women, G League, MPBL...), which dominates
-    # the database and makes the nightly replay crawl. Nothing here uses those games.
-    sports: [FOOTBALL, MMA]
+    sports: [FOOTBALL, BASKETBALL, MMA]
     history-days: 730
     # Fallback horizon when lookahead-by-provider is empty.
     lookahead-days: 14
@@ -177,5 +180,7 @@ sportpredict:
     min-fit-sample: 300
     # Also require the stored backtest to beat the baseline log-loss before betting.
     require-backtest-edge: true
-    sports: [FOOTBALL]
+    # Each sport is gated on its own backtest, so listing basketball here does not let it
+    # bet until a basketball walk-forward exists and beats its baseline.
+    sports: [FOOTBALL, BASKETBALL]
     min-edge: 0.02

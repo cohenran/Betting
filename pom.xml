@@ -110,6 +110,16 @@
                         </exclude>
                     </excludes>
                 </configuration>
+                <executions>
+                    <!-- Writes build time and version into the jar, exposed at
+                         /actuator/info, so "is the new code actually deployed?" is a
+                         question with an answer rather than an inference. -->
+                    <execution>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

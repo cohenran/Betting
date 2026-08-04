@@ -18,7 +18,9 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Everything that turns finished results into model state.
@@ -94,14 +96,17 @@ public class LearningService {
         Instant since = Instant.now().minus(props.getIngest().getHistoryDays() * 2L, ChronoUnit.DAYS);
 
         // 1. Reset ratings and replay every finished football/basketball match in order.
-        List<TeamRating> allRatings = ratings.findAll();
-        allRatings.forEach(r -> {
+        // Ratings are indexed in memory and written once at the end. Looking each one up
+        // and saving it per fixture cost four statements a match, which is what made a
+        // 60k-fixture rebuild take two hours.
+        Map<String, TeamRating> ratingIndex = new HashMap<>();
+        for (TeamRating r : ratings.findAll()) {
             r.setElo(props.getModel().getElo().getInitial());
             r.setMatches(0);
             r.setScored(0);
             r.setConceded(0);
-        });
-        ratings.saveAll(allRatings);
+            ratingIndex.put(ratingKey(r.getTeam().getId(), r.getSport()), r);
+        }
 
         List<Fixture> football = fixtures.findTrainingSet(Sport.FOOTBALL, since);
         List<Fixture> basketball = fixtures.findTrainingSet(Sport.BASKETBALL, since);
@@ -110,10 +115,12 @@ public class LearningService {
         all.addAll(basketball);
         all.sort(Comparator.comparing(Fixture::getKickoff));
         for (Fixture f : all) {
-            elo.applyFixture(f);
-            f.setLearned(true);
+            elo.applyFixture(f, rating(ratingIndex, f.getHomeTeam(), f.getSport()),
+                    rating(ratingIndex, f.getAwayTeam(), f.getSport()));
         }
-        fixtures.saveAll(all);
+        ratings.saveAll(ratingIndex.values());
+        int marked = fixtures.markFinishedAsLearned();
+        log.info("replayed {} fixtures, marked {} learned", all.size(), marked);
 
         // 2. Reset fighters and replay UFC history with a fresh online model.
         List<Fighter> allFighters = fighters.findAll();
@@ -201,6 +208,16 @@ public class LearningService {
                 + sq(pAway - (outcome.equals("AWAY") ? 1 : 0));
         p.setBrier(brier);
         p.setSettled(true);
+    }
+
+    private String ratingKey(Long teamId, Sport sport) {
+        return teamId + "|" + sport;
+    }
+
+    /** Existing rating, or a fresh in-memory one for a team seen for the first time. */
+    private TeamRating rating(Map<String, TeamRating> index, Team team, Sport sport) {
+        return index.computeIfAbsent(ratingKey(team.getId(), sport),
+                key -> elo.detachedRatingFor(team, sport));
     }
 
     private double nz(Double v) {

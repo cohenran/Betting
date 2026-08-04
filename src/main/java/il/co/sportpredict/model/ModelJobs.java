@@ -2,6 +2,7 @@ package il.co.sportpredict.model;
 
 import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.model.backtest.BacktestService;
+import il.co.sportpredict.model.backtest.BasketballBacktestService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class ModelJobs {
 
     private final LearningService learning;
     private final BacktestService backtest;
+    private final BasketballBacktestService basketballBacktest;
     private final SportPredictProperties props;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -52,6 +54,50 @@ public class ModelJobs {
                 historyDays != null ? historyDays : props.getModel().getBacktestHistoryDays(),
                 stepDays != null ? stepDays : props.getModel().getBacktestStepDays(),
                 trainFraction != null ? trainFraction : props.getModel().getBacktestTrainFraction()));
+    }
+
+    public String startBasketballBacktest(Integer historyDays) {
+        return start("basketball-backtest", () -> basketballBacktest.runAndStore(
+                historyDays != null ? historyDays : props.getModel().getBacktestHistoryDays()));
+    }
+
+    /** Runs whichever backtests have enough history, reporting failures per sport. */
+    public String startAllBacktests() {
+        return start("backtests", this::runAllBacktests);
+    }
+
+    /**
+     * The nightly sequence: rebuild, then backtest every sport. One lock for the whole
+     * thing, so the backtests always score the model the rebuild just produced.
+     */
+    public String startNightly() {
+        return start("nightly", () -> {
+            LearningService.RefitReport report = learning.rebuildAndRefit();
+            if (!props.getModel().isBacktestAfterRetrain()) {
+                return report.toString();
+            }
+            return report + " | " + runAllBacktests();
+        });
+    }
+
+    private String runAllBacktests() {
+        StringBuilder report = new StringBuilder();
+        try {
+            report.append("football=").append(backtest.runAndStore(
+                    props.getModel().getBacktestHistoryDays(),
+                    props.getModel().getBacktestStepDays(),
+                    props.getModel().getBacktestTrainFraction()));
+        } catch (Exception e) {
+            // Too little history is the normal early state, not something to alarm on.
+            report.append("football skipped: ").append(e.getMessage());
+        }
+        try {
+            report.append("; basketball=").append(
+                    basketballBacktest.runAndStore(props.getModel().getBacktestHistoryDays()));
+        } catch (Exception e) {
+            report.append("; basketball skipped: ").append(e.getMessage());
+        }
+        return report.toString();
     }
 
     public boolean isRunning() {

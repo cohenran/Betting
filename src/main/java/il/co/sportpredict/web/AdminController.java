@@ -12,6 +12,8 @@ import il.co.sportpredict.ingest.TeamResolver;
 import il.co.sportpredict.model.LearningService;
 import il.co.sportpredict.model.ModelJobs;
 import il.co.sportpredict.model.backtest.BacktestService;
+import il.co.sportpredict.model.backtest.BasketballBacktestService;
+import il.co.sportpredict.winner.PaperBetManager;
 import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.repo.FixtureSourceRepository;
 import il.co.sportpredict.repo.IngestRunRepository;
@@ -40,6 +42,8 @@ public class AdminController {
     private final IngestService ingest;
     private final LearningService learning;
     private final BacktestService backtestService;
+    private final BasketballBacktestService basketballBacktest;
+    private final PaperBetManager paperBets;
     private final AllSportsOddsClient oddsClient;
     private final FixtureSourceRepository fixtureSources;
     private final FixtureRepository fixtures;
@@ -106,15 +110,20 @@ public class AdminController {
     @PostMapping("/backtest")
     public Map<String, String> backtest(
             @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(defaultValue = "FOOTBALL") Sport sport,
             @RequestParam(required = false) Integer historyDays,
             @RequestParam(required = false) Integer stepDays,
             @RequestParam(required = false) Double trainFraction) {
         authorize(token);
-        return Map.of("backtest", modelJobs.startBacktest(historyDays, stepDays, trainFraction),
-                "status", modelJobs.getStatus());
+        String started = switch (sport) {
+            case FOOTBALL -> modelJobs.startBacktest(historyDays, stepDays, trainFraction);
+            case BASKETBALL -> modelJobs.startBasketballBacktest(historyDays);
+            case MMA -> throw new IllegalArgumentException("no MMA backtest exists yet");
+        };
+        return Map.of("backtest", started, "sport", sport.name(), "status", modelJobs.getStatus());
     }
 
-    /** The stored outcome of the most recent backtest, whoever ran it. */
+    /** Stored outcome per sport, plus whether each sport is currently allowed to bet. */
     @GetMapping("/backtest-result")
     public Map<String, Object> backtestResult(
             @RequestHeader(value = "X-Admin-Token", required = false) String token) {
@@ -122,12 +131,21 @@ public class AdminController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("running", modelJobs.isRunning());
         out.put("job", modelJobs.getCurrentJob());
-        backtestService.lastResult().ifPresentOrElse(
+        out.put("football", sportGate(Sport.FOOTBALL, backtestService.lastResult()));
+        out.put("basketball", sportGate(Sport.BASKETBALL, basketballBacktest.lastResult()));
+        return out;
+    }
+
+    private Map<String, Object> sportGate(Sport sport,
+                                          java.util.Optional<BacktestService.StoredResult> stored) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        stored.ifPresentOrElse(
                 result -> {
                     out.put("result", result);
                     out.put("beatsBaseline", result.beatsBaseline());
                 },
                 () -> out.put("result", "none stored yet"));
+        out.put("blocked", paperBets.blockedReason(sport).orElse(null));
         return out;
     }
 
@@ -139,16 +157,17 @@ public class AdminController {
     @GetMapping("/odds-check")
     public Map<String, Object> oddsCheck(
             @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(defaultValue = "FOOTBALL") Sport sport,
             @RequestParam(defaultValue = "3") int days) {
         authorize(token);
         LocalDate from = LocalDate.now();
-        Map<String, OddsSnapshot> odds = oddsClient.fetch(from, from.plusDays(days));
+        Map<String, OddsSnapshot> odds = oddsClient.fetch(sport, from, from.plusDays(days));
 
         List<Map<String, Object>> matched = new ArrayList<>();
         int unmatched = 0;
         for (OddsSnapshot snapshot : odds.values()) {
             var source = fixtureSources.findByProviderAndSportAndExternalId(
-                    AllSportsProvider.NAME, Sport.FOOTBALL, snapshot.externalId());
+                    AllSportsProvider.NAME, sport, snapshot.externalId());
             if (source.isEmpty()) {
                 unmatched++;
                 continue;
@@ -161,7 +180,10 @@ public class AdminController {
                     row.put("fixtureId", fixture.getId());
                     row.put("match", fixture.getHomeTeam().getName() + " vs " + fixture.getAwayTeam().getName());
                     row.put("kickoff", fixture.getKickoff());
-                    row.put("odds", List.of(snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway()));
+                    // Basketball has no draw, so the middle price is genuinely absent.
+                    row.put("odds", snapshot.twoWay()
+                            ? List.of(snapshot.medianHome(), snapshot.medianAway())
+                            : List.of(snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway()));
                     row.put("bookmakers", snapshot.bookmakers());
                     row.put("overround", Math.round(snapshot.overround() * 1000) / 1000.0);
                     matched.add(row);
@@ -170,6 +192,7 @@ public class AdminController {
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sport", sport.name());
         out.put("window", from + ".." + from.plusDays(days));
         out.put("pricedMatches", odds.size());
         out.put("matchedToFixture", odds.size() - unmatched);

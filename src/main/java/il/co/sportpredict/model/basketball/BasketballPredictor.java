@@ -33,10 +33,18 @@ public class BasketballPredictor {
     private final SportPredictProperties props;
 
     public MatchPrediction predict(Fixture fixture) {
-        SportPredictProperties.Basketball cfg = props.getModel().getBasketball();
-        TeamRating home = elo.ratingFor(fixture.getHomeTeam(), Sport.BASKETBALL);
-        TeamRating away = elo.ratingFor(fixture.getAwayTeam(), Sport.BASKETBALL);
+        return predictFrom(elo.ratingFor(fixture.getHomeTeam(), Sport.BASKETBALL),
+                elo.ratingFor(fixture.getAwayTeam(), Sport.BASKETBALL));
+    }
 
+    /**
+     * Prediction from ratings the caller holds, touching no database.
+     *
+     * <p>The walk-forward backtest needs this: it replays history against detached ratings
+     * and must predict each game from the state <em>before</em> that game was applied.
+     */
+    public MatchPrediction predictFrom(TeamRating home, TeamRating away) {
+        SportPredictProperties.Basketball cfg = props.getModel().getBasketball();
         double eloDiff = home.getElo() - away.getElo();
         double expectedMargin = eloDiff / cfg.getEloPerPoint() + cfg.getHomeAdvantagePoints();
 

@@ -43,7 +43,18 @@ public class EloService {
     public void applyFixture(Fixture fixture) {
         TeamRating home = ratingFor(fixture.getHomeTeam(), fixture.getSport());
         TeamRating away = ratingFor(fixture.getAwayTeam(), fixture.getSport());
+        applyFixture(fixture, home, away);
+        ratings.save(home);
+        ratings.save(away);
+    }
 
+    /**
+     * Pure in-memory update against ratings the caller already holds.
+     *
+     * <p>The full history replay uses this: looking each rating up and saving it per fixture
+     * costs four statements a match, which is what turned a rebuild into a two-hour job.
+     */
+    public void applyFixture(Fixture fixture, TeamRating home, TeamRating away) {
         int hs = fixture.getHomeScore();
         int as = fixture.getAwayScore();
         double actual = hs > as ? 1.0 : (hs == as ? 0.5 : 0.0);
@@ -60,8 +71,13 @@ public class EloService {
         away.setElo(away.getElo() - delta);
         updateScoring(home, hs, as);
         updateScoring(away, as, hs);
-        ratings.save(home);
-        ratings.save(away);
+    }
+
+    /** Rating for a team, created in memory if absent. Not persisted by this call. */
+    public TeamRating detachedRatingFor(Team team, Sport sport) {
+        TeamRating rating = new TeamRating(team, sport, props.getModel().getElo().getInitial());
+        rating.setUpdatedAt(Instant.now());
+        return rating;
     }
 
     /** Elo update for a finished fight. Draws move both fighters halfway. */

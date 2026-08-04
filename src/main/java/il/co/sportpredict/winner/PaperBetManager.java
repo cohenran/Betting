@@ -9,6 +9,7 @@ import il.co.sportpredict.ingest.OddsSnapshot;
 import il.co.sportpredict.model.PredictionView;
 import il.co.sportpredict.model.PredictionService;
 import il.co.sportpredict.model.backtest.BacktestService;
+import il.co.sportpredict.model.backtest.BasketballBacktestService;
 import il.co.sportpredict.model.football.FootballPredictor;
 import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.repo.FixtureSourceRepository;
@@ -67,18 +68,23 @@ public class PaperBetManager {
     private final FixtureSourceRepository fixtureSources;
     private final FootballPredictor footballPredictor;
     private final BacktestService backtest;
+    private final BasketballBacktestService basketballBacktest;
     private final SportPredictProperties props;
 
     /** Outcome of the last run, so a silent failure is visible without reading logs. */
     @Getter
     private volatile String lastRunStatus = "not run yet";
 
-    /** One priced fixture, whatever the price came from. */
+    /** One priced fixture, whatever the price came from. Null draw odds means a 2-way market. */
     private record BetCandidate(
             Long fixtureId, Sport sport, String home, String away,
             double pHome, double pDraw, double pAway,
-            double oddsHome, double oddsDraw, double oddsAway,
+            double oddsHome, Double oddsDraw, double oddsAway,
             String source, int bookmakers) {
+
+        boolean twoWay() {
+            return oddsDraw == null;
+        }
     }
 
     @Scheduled(cron = "${sportpredict.paper-betting.cron:0 0 8 * * *}", zone = "Asia/Jerusalem")
@@ -103,24 +109,43 @@ public class PaperBetManager {
 
     // ---------- gating ----------
 
-    /** Empty when betting is allowed, otherwise the reason it is not. */
-    private Optional<String> blockedReason() {
-        int fitSample = footballPredictor.currentParams().getSampleSize();
-        int required = props.getPaperBetting().getMinFitSample();
-        if (fitSample < required) {
-            return Optional.of("football fit has " + fitSample + " matches, need " + required);
+    /**
+     * Empty when betting this sport is allowed, otherwise the reason it is not.
+     *
+     * <p>Gated per sport deliberately: a football backtest says nothing about whether the
+     * basketball model is worth money, and authorising one on the other's evidence would
+     * make the whole dry run meaningless.
+     */
+    public Optional<String> blockedReason(Sport sport) {
+        if (!props.getPaperBetting().getSports().contains(sport)) {
+            return Optional.of(sport + " is not in paper-betting.sports");
         }
+        if (sport == Sport.FOOTBALL) {
+            int fitSample = footballPredictor.currentParams().getSampleSize();
+            int required = props.getPaperBetting().getMinFitSample();
+            if (fitSample < required) {
+                return Optional.of("football fit has " + fitSample + " matches, need " + required);
+            }
+            return backtestGate("football", backtest.lastResult());
+        }
+        if (sport == Sport.BASKETBALL) {
+            return backtestGate("basketball", basketballBacktest.lastResult());
+        }
+        // MMA has neither a backtest nor a gate yet, so it must not be bettable.
+        return Optional.of("no backtest exists for " + sport + " yet");
+    }
+
+    private Optional<String> backtestGate(String label, Optional<BacktestService.StoredResult> stored) {
         if (!props.getPaperBetting().isRequireBacktestEdge()) {
             return Optional.empty();
         }
-        Optional<BacktestService.StoredResult> stored = backtest.lastResult();
         if (stored.isEmpty()) {
-            return Optional.of("no backtest on record yet");
+            return Optional.of("no " + label + " backtest on record yet");
         }
         BacktestService.StoredResult result = stored.get();
         if (!result.beatsBaseline()) {
-            return Optional.of("backtest logLoss %.4f does not beat baseline %.4f"
-                    .formatted(result.logLoss(), result.baselineLogLoss()));
+            return Optional.of("%s backtest logLoss %.4f does not beat baseline %.4f"
+                    .formatted(label, result.logLoss(), result.baselineLogLoss()));
         }
         return Optional.empty();
     }
@@ -128,17 +153,25 @@ public class PaperBetManager {
     // ---------- placing ----------
 
     private void placeBets() {
-        Optional<String> blocked = blockedReason();
-        if (blocked.isPresent()) {
-            lastRunStatus = "SKIPPED: " + blocked.get();
+        List<Sport> allowed = new ArrayList<>();
+        List<String> blocked = new ArrayList<>();
+        for (Sport sport : props.getPaperBetting().getSports()) {
+            blockedReason(sport).ifPresentOrElse(blocked::add, () -> allowed.add(sport));
+        }
+        if (allowed.isEmpty()) {
+            lastRunStatus = "SKIPPED: " + String.join("; ", blocked);
             log.warn("paper betting: {}", lastRunStatus);
             return;
+        }
+        if (!blocked.isEmpty()) {
+            log.info("paper betting: skipping some sports - {}", String.join("; ", blocked));
         }
 
         List<BetCandidate> candidates = props.getPaperBetting().getOddsSource()
                 == SportPredictProperties.OddsSource.ALLSPORTS
-                ? candidatesFromOddsApi()
+                ? candidatesFromOddsApi(allowed)
                 : candidatesFromWinner();
+        candidates = candidates.stream().filter(c -> allowed.contains(c.sport())).toList();
 
         if (candidates.isEmpty()) {
             // A broken price source and a genuine absence of value produce identical empty
@@ -178,6 +211,12 @@ public class PaperBetManager {
     }
 
     private ValueBetAdvisor.BetRecommendation advise(BetCandidate c, double bankroll, double kelly) {
+        if (c.twoWay()) {
+            // Basketball: no draw market, so the draw probability must not be offered a
+            // price at all rather than being priced at zero.
+            return ValueBetAdvisor.analyze2Way(c.sport(), c.home(), c.away(),
+                    c.pHome(), c.pAway(), c.oddsHome(), c.oddsAway(), bankroll, kelly);
+        }
         return ValueBetAdvisor.analyze3Way(c.sport(), c.home(), c.away(),
                 c.pHome(), c.pDraw(), c.pAway(),
                 c.oddsHome(), c.oddsDraw(), c.oddsAway(), bankroll, kelly);
@@ -204,39 +243,40 @@ public class PaperBetManager {
      * Market prices joined onto fixtures by the provider's own match id, so no team-name
      * matching is involved and nothing can silently bind to the wrong game.
      */
-    private List<BetCandidate> candidatesFromOddsApi() {
+    private List<BetCandidate> candidatesFromOddsApi(List<Sport> sports) {
         LocalDate from = LocalDate.now();
         LocalDate to = from.plusDays(props.getPaperBetting().getOddsWindowDays());
-        Map<String, OddsSnapshot> odds = oddsClient.fetch(from, to);
-        if (odds.isEmpty()) {
-            log.warn("paper betting: odds API returned nothing for {}..{}", from, to);
-            return List.of();
-        }
-
         List<BetCandidate> out = new ArrayList<>();
-        for (OddsSnapshot snapshot : odds.values()) {
-            fixtureSources.findByProviderAndSportAndExternalId(
-                            AllSportsProvider.NAME, Sport.FOOTBALL, snapshot.externalId())
-                    .map(source -> source.getFixture().getId())
-                    .ifPresent(fixtureId -> {
-                        PredictionView view = predictions.predictFixture(fixtureId);
-                        if (!"SCHEDULED".equals(view.status())
-                                || view.startsAt().isBefore(Instant.now())) {
-                            return;
-                        }
-                        if (!props.getPaperBetting().getSports().contains(Sport.valueOf(view.sport()))) {
-                            return;
-                        }
-                        out.add(new BetCandidate(fixtureId, Sport.valueOf(view.sport()),
-                                view.home(), view.away(),
-                                view.prediction().pHome(), view.prediction().pDraw(),
-                                view.prediction().pAway(),
-                                snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway(),
-                                AllSportsProvider.NAME, snapshot.bookmakers()));
-                    });
+        int priced = 0;
+
+        for (Sport sport : sports) {
+            Map<String, OddsSnapshot> odds = oddsClient.fetch(sport, from, to);
+            if (odds.isEmpty()) {
+                log.warn("paper betting: no {} odds for {}..{}", sport, from, to);
+                continue;
+            }
+            priced += odds.size();
+            for (OddsSnapshot snapshot : odds.values()) {
+                fixtureSources.findByProviderAndSportAndExternalId(
+                                AllSportsProvider.NAME, sport, snapshot.externalId())
+                        .map(source -> source.getFixture().getId())
+                        .ifPresent(fixtureId -> {
+                            PredictionView view = predictions.predictFixture(fixtureId);
+                            if (!"SCHEDULED".equals(view.status())
+                                    || view.startsAt().isBefore(Instant.now())) {
+                                return;
+                            }
+                            out.add(new BetCandidate(fixtureId, sport,
+                                    view.home(), view.away(),
+                                    view.prediction().pHome(), view.prediction().pDraw(),
+                                    view.prediction().pAway(),
+                                    snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway(),
+                                    AllSportsProvider.NAME, snapshot.bookmakers()));
+                        });
+            }
         }
         log.info("paper betting: {} of {} priced matches matched a stored fixture",
-                out.size(), odds.size());
+                out.size(), priced);
         return out;
     }
 
@@ -395,6 +435,10 @@ public class PaperBetManager {
     private String selectionCode(String recommendedSelection, BetCandidate c) {
         if ("DRAW".equals(recommendedSelection)) {
             return "DRAW";
+        }
+        if (c.twoWay()) {
+            // analyze2Way returns the bare team name rather than a tagged label.
+            return recommendedSelection.equals(c.home()) ? "HOME" : "AWAY";
         }
         return recommendedSelection.contains("(HOME)") ? "HOME" : "AWAY";
     }

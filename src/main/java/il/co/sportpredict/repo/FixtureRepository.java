@@ -5,6 +5,7 @@ import il.co.sportpredict.domain.Fixture;
 import il.co.sportpredict.domain.Sport;
 import il.co.sportpredict.domain.Team;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -64,4 +65,16 @@ public interface FixtureRepository extends JpaRepository<Fixture, Long> {
     Optional<Fixture> findWithTeams(@Param("id") Long id);
 
     long countBySportAndStatus(Sport sport, EventStatus status);
+
+    /**
+     * Marks every finished fixture as learned in one statement. Saving the entities
+     * individually meant tens of thousands of UPDATEs inside the rebuild transaction.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+           update Fixture f set f.learned = true
+           where f.status = il.co.sportpredict.domain.EventStatus.FINISHED
+             and f.homeScore is not null and f.learned = false
+           """)
+    int markFinishedAsLearned();
 }
