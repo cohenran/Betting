@@ -112,7 +112,10 @@ public class BasketballBacktestService {
 
         BacktestService.StoredResult result = new BacktestService.StoredResult(
                 round(sumLogLoss / scored), round(baseLogLoss / scored),
-                round((double) correct / scored), scored, Instant.now().toString());
+                round((double) correct / scored), scored, Instant.now().toString(),
+                // No market comparison for basketball yet - prices are stored but the
+                // two-way moneyline is not wired into this replay.
+                null);
         store.save(STATE_KEY, result, scored, "elo-walk-forward");
         log.info("basketball backtest: {} games scored, logLoss={} baseline={} accuracy={} "
                         + "(baseline accuracy {}), brier={}",

@@ -52,11 +52,20 @@ public class BacktestService {
      * walk-forward evaluation (dozens of refits) to answer "is the model worth betting".
      */
     public record StoredResult(double logLoss, double baselineLogLoss, double accuracy,
-                               int testMatches, String ranAt) {
+                               int testMatches, String ranAt, MarketComparison market) {
 
         /** The minimum bar: the model must be better calibrated than the base rates. */
         public boolean beatsBaseline() {
             return logLoss < baselineLogLoss;
+        }
+
+        /**
+         * The bar that actually decides whether betting can be profitable. Null when no
+         * prices were available for the tested matches - beating base rates says nothing
+         * about beating a bookmaker.
+         */
+        public Boolean beatsMarket() {
+            return market == null ? null : market.modelLogLoss() < market.marketLogLoss();
         }
     }
 
@@ -68,10 +77,10 @@ public class BacktestService {
     public StoredResult runAndStore(int historyDays, int stepDays, double trainFraction) {
         BacktestResult result = runFootball(historyDays, stepDays, trainFraction);
         StoredResult stored = new StoredResult(result.logLoss(), result.baselineLogLoss(),
-                result.accuracy(), result.testMatches(), Instant.now().toString());
+                result.accuracy(), result.testMatches(), Instant.now().toString(), result.market());
         store.save(STATE_KEY, stored, result.testMatches(), "walk-forward");
-        log.info("stored backtest: logLoss={} baseline={} beatsBaseline={}",
-                stored.logLoss(), stored.baselineLogLoss(), stored.beatsBaseline());
+        log.info("stored backtest: logLoss={} baseline={} beatsBaseline={} beatsMarket={}",
+                stored.logLoss(), stored.baselineLogLoss(), stored.beatsBaseline(), stored.beatsMarket());
         return stored;
     }
 

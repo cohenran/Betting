@@ -151,6 +151,9 @@ public class AdminController {
                 result -> {
                     out.put("result", result);
                     out.put("beatsBaseline", result.beatsBaseline());
+                    // The one that decides profitability. Null means no prices were
+                    // available for the tested matches, not that the model passed.
+                    out.put("beatsMarket", result.beatsMarket());
                 },
                 () -> out.put("result", "none stored yet"));
         out.put("blocked", paperBets.blockedReason(sport).orElse(null));
