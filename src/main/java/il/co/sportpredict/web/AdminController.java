@@ -1,11 +1,17 @@
 package il.co.sportpredict.web;
 
 import il.co.sportpredict.config.SportPredictProperties;
+import il.co.sportpredict.domain.Fixture;
 import il.co.sportpredict.domain.Sport;
 import il.co.sportpredict.domain.Team;
+import il.co.sportpredict.ingest.AllSportsOddsClient;
+import il.co.sportpredict.ingest.AllSportsProvider;
 import il.co.sportpredict.ingest.IngestService;
+import il.co.sportpredict.ingest.OddsSnapshot;
 import il.co.sportpredict.ingest.TeamResolver;
 import il.co.sportpredict.model.LearningService;
+import il.co.sportpredict.model.backtest.BacktestService;
+import il.co.sportpredict.repo.FixtureSourceRepository;
 import il.co.sportpredict.repo.IngestRunRepository;
 import il.co.sportpredict.repo.TeamRepository;
 import il.co.sportpredict.winner.WinnerService;
@@ -16,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,6 +37,9 @@ public class AdminController {
 
     private final IngestService ingest;
     private final LearningService learning;
+    private final BacktestService backtestService;
+    private final AllSportsOddsClient oddsClient;
+    private final FixtureSourceRepository fixtureSources;
     private final IngestRunRepository runs;
     private final TeamRepository teams;
     private final TeamResolver teamResolver;
@@ -70,6 +80,68 @@ public class AdminController {
         Team team = resolveTeam(request);
         teamResolver.addAlias(team, WinnerService.PROVIDER, request.rawName());
         return Map.of("mapped", request.rawName(), "toTeam", team.getName(), "sport", team.getSport().name());
+    }
+
+    /**
+     * Runs a walk-forward backtest and stores it, which is what the paper-bet gate reads.
+     * The nightly job does this too; this exists so the gate can be populated on demand
+     * instead of waiting for 04:00.
+     */
+    @PostMapping("/backtest")
+    public BacktestService.StoredResult backtest(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(required = false) Integer historyDays,
+            @RequestParam(required = false) Integer stepDays,
+            @RequestParam(required = false) Double trainFraction) {
+        authorize(token);
+        return backtestService.runAndStore(
+                historyDays != null ? historyDays : props.getModel().getBacktestHistoryDays(),
+                stepDays != null ? stepDays : props.getModel().getBacktestStepDays(),
+                trainFraction != null ? trainFraction : props.getModel().getBacktestTrainFraction());
+    }
+
+    /**
+     * Checks that market odds actually join onto stored fixtures, without waiting for the
+     * paper-bet run. A high unmatched count means the fixtures behind those prices were
+     * never ingested - a league-filter problem, not an odds problem.
+     */
+    @GetMapping("/odds-check")
+    public Map<String, Object> oddsCheck(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(defaultValue = "3") int days) {
+        authorize(token);
+        LocalDate from = LocalDate.now();
+        Map<String, OddsSnapshot> odds = oddsClient.fetch(from, from.plusDays(days));
+
+        List<Map<String, Object>> matched = new ArrayList<>();
+        int unmatched = 0;
+        for (OddsSnapshot snapshot : odds.values()) {
+            var source = fixtureSources.findByProviderAndSportAndExternalId(
+                    AllSportsProvider.NAME, Sport.FOOTBALL, snapshot.externalId());
+            if (source.isEmpty()) {
+                unmatched++;
+                continue;
+            }
+            if (matched.size() < 15) {
+                Fixture fixture = source.get().getFixture();
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("fixtureId", fixture.getId());
+                row.put("match", fixture.getHomeTeam().getName() + " vs " + fixture.getAwayTeam().getName());
+                row.put("kickoff", fixture.getKickoff());
+                row.put("odds", List.of(snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway()));
+                row.put("bookmakers", snapshot.bookmakers());
+                row.put("overround", Math.round(snapshot.overround() * 1000) / 1000.0);
+                matched.add(row);
+            }
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("window", from + ".." + from.plusDays(days));
+        out.put("pricedMatches", odds.size());
+        out.put("matchedToFixture", odds.size() - unmatched);
+        out.put("unmatched", unmatched);
+        out.put("sample", matched);
+        return out;
     }
 
     @GetMapping("/runs")
