@@ -166,6 +166,18 @@ public class PaperBetManager {
             return Optional.of("%s backtest logLoss %.4f does not beat baseline %.4f"
                     .formatted(label, result.logLoss(), result.baselineLogLoss()));
         }
+        if (!props.getPaperBetting().isRequireMarketEdge()) {
+            return Optional.empty();
+        }
+        if (result.market() == null) {
+            return Optional.of(label + " has no market comparison - back-fill odds covering "
+                    + "the backtest window before betting");
+        }
+        if (!Boolean.TRUE.equals(result.beatsMarket())) {
+            return Optional.of("%s model logLoss %.4f loses to the market's %.4f over %d matches"
+                    .formatted(label, result.market().modelLogLoss(),
+                            result.market().marketLogLoss(), result.market().matches()));
+        }
         return Optional.empty();
     }
 

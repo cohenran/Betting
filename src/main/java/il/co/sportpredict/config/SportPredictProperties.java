@@ -202,6 +202,16 @@ public class SportPredictProperties {
          */
         private boolean requireBacktestEdge = true;
 
+        /**
+         * Refuse to bet unless the model beats the <em>market</em>, not merely the base
+         * rates. Beating base rates is easy and means nothing: a model measured as worse
+         * than the closing price has negative expectation by construction, whatever the
+         * staking scheme.
+         *
+         * <p>Set false only to run the ledger as a bug hunt, knowing it will lose.
+         */
+        private boolean requireMarketEdge = true;
+
         /** Only bet these sports. Football first - it is the one with a real fitted model. */
         private List<Sport> sports = new ArrayList<>(List.of(Sport.FOOTBALL));
 

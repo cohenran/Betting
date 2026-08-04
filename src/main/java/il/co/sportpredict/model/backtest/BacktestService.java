@@ -248,10 +248,13 @@ public class BacktestService {
                     round((double) marketCorrect / marketMatches),
                     round(overroundSum / marketMatches),
                     model < market
-                            ? "model beats the market by %.4f nats/match on %d matches".formatted(
-                                    market - model, marketMatches)
-                            : "model loses to the market by %.4f nats/match - betting into these prices "
-                                    + "has negative expectation".formatted(model - market));
+                            ? "model beats the market by %.4f nats/match on %d matches"
+                                    .formatted(market - model, marketMatches)
+                            // Parentheses matter: .formatted() binds to the last literal in a
+                            // concatenation, so without them the placeholder is never filled.
+                            : ("model loses to the market by %.4f nats/match on %d matches - "
+                                    + "betting into these prices has negative expectation")
+                                    .formatted(model - market, marketMatches));
             log.info("market comparison: model={} market={} over {} matches",
                     round(model), round(market), marketMatches);
         }
