@@ -10,7 +10,7 @@ import il.co.sportpredict.ingest.IngestService;
 import il.co.sportpredict.ingest.OddsSnapshot;
 import il.co.sportpredict.ingest.TeamResolver;
 import il.co.sportpredict.model.LearningService;
-import il.co.sportpredict.model.RetrainRunner;
+import il.co.sportpredict.model.ModelJobs;
 import il.co.sportpredict.model.backtest.BacktestService;
 import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.repo.FixtureSourceRepository;
@@ -43,7 +43,7 @@ public class AdminController {
     private final AllSportsOddsClient oddsClient;
     private final FixtureSourceRepository fixtureSources;
     private final FixtureRepository fixtures;
-    private final RetrainRunner retrainRunner;
+    private final ModelJobs modelJobs;
     private final IngestRunRepository runs;
     private final TeamRepository teams;
     private final TeamResolver teamResolver;
@@ -70,18 +70,20 @@ public class AdminController {
         return Map.of("learnedResults", learned);
     }
 
-    /** Starts a rebuild in the background and returns at once; poll /retrain-status. */
+    /** Starts a rebuild in the background and returns at once; poll /job-status. */
     @PostMapping("/retrain")
     public Map<String, String> retrain(@RequestHeader(value = "X-Admin-Token", required = false) String token) {
         authorize(token);
-        return Map.of("retrain", retrainRunner.start(), "status", retrainRunner.getStatus());
+        return Map.of("retrain", modelJobs.startRetrain(), "status", modelJobs.getStatus());
     }
 
-    @GetMapping("/retrain-status")
-    public Map<String, Object> retrainStatus(
+    @GetMapping({"/job-status", "/retrain-status"})
+    public Map<String, Object> jobStatus(
             @RequestHeader(value = "X-Admin-Token", required = false) String token) {
         authorize(token);
-        return Map.of("running", retrainRunner.isRunning(), "status", retrainRunner.getStatus());
+        return Map.of("running", modelJobs.isRunning(),
+                "job", modelJobs.getCurrentJob(),
+                "status", modelJobs.getStatus());
     }
 
     /** Teaches the Winner matcher a name it could not resolve. */
@@ -95,21 +97,38 @@ public class AdminController {
     }
 
     /**
-     * Runs a walk-forward backtest and stores it, which is what the paper-bet gate reads.
-     * The nightly job does this too; this exists so the gate can be populated on demand
-     * instead of waiting for 04:00.
+     * Starts a walk-forward backtest in the background and stores the result, which is what
+     * the paper-bet gate reads. The nightly job does this too; this exists so the gate can
+     * be populated on demand instead of waiting for 04:00.
+     *
+     * <p>Poll /job-status for progress, then /backtest-result for the numbers.
      */
     @PostMapping("/backtest")
-    public BacktestService.StoredResult backtest(
+    public Map<String, String> backtest(
             @RequestHeader(value = "X-Admin-Token", required = false) String token,
             @RequestParam(required = false) Integer historyDays,
             @RequestParam(required = false) Integer stepDays,
             @RequestParam(required = false) Double trainFraction) {
         authorize(token);
-        return backtestService.runAndStore(
-                historyDays != null ? historyDays : props.getModel().getBacktestHistoryDays(),
-                stepDays != null ? stepDays : props.getModel().getBacktestStepDays(),
-                trainFraction != null ? trainFraction : props.getModel().getBacktestTrainFraction());
+        return Map.of("backtest", modelJobs.startBacktest(historyDays, stepDays, trainFraction),
+                "status", modelJobs.getStatus());
+    }
+
+    /** The stored outcome of the most recent backtest, whoever ran it. */
+    @GetMapping("/backtest-result")
+    public Map<String, Object> backtestResult(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token) {
+        authorize(token);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("running", modelJobs.isRunning());
+        out.put("job", modelJobs.getCurrentJob());
+        backtestService.lastResult().ifPresentOrElse(
+                result -> {
+                    out.put("result", result);
+                    out.put("beatsBaseline", result.beatsBaseline());
+                },
+                () -> out.put("result", "none stored yet"));
+        return out;
     }
 
     /**
