@@ -13,6 +13,7 @@ import il.co.sportpredict.model.LearningService;
 import il.co.sportpredict.model.ModelJobs;
 import il.co.sportpredict.model.backtest.BacktestService;
 import il.co.sportpredict.model.backtest.BasketballBacktestService;
+import il.co.sportpredict.model.backtest.MarketBenchmarkService;
 import il.co.sportpredict.winner.PaperBetManager;
 import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.repo.FixtureSourceRepository;
@@ -43,6 +44,7 @@ public class AdminController {
     private final LearningService learning;
     private final BacktestService backtestService;
     private final BasketballBacktestService basketballBacktest;
+    private final MarketBenchmarkService marketBenchmark;
     private final PaperBetManager paperBets;
     private final AllSportsOddsClient oddsClient;
     private final FixtureSourceRepository fixtureSources;
@@ -147,6 +149,20 @@ public class AdminController {
                 () -> out.put("result", "none stored yet"));
         out.put("blocked", paperBets.blockedReason(sport).orElse(null));
         return out;
+    }
+
+    /**
+     * Model vs bookmakers on the same settled matches. This is the fast route to the only
+     * question that matters - the paper trade needs well over a year to answer it.
+     */
+    @GetMapping("/market-benchmark")
+    public MarketBenchmarkService.Comparison marketBenchmark(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(defaultValue = "FOOTBALL") Sport sport,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to) {
+        authorize(token);
+        return marketBenchmark.run(sport, from, to);
     }
 
     /**

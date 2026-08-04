@@ -55,8 +55,27 @@ import java.util.Optional;
 @Slf4j
 public class PaperBetManager {
 
-    private static final String CSV_HEADER =
-            "Date,FixtureId,Match,Selection,Probability,Odds,Edge,Stake,Status,PnL,Bankroll,Source,Bookmakers";
+    /**
+     * Competition is recorded because a real edge is far likelier to live in one league than
+     * across all of them - "lost 8% overall but made 6% in Ligat ha'Al over 40 bets" is
+     * actionable, where an aggregate ROI hides it.
+     *
+     * <p>New columns go on the end, and the reader indexes by these constants: the resolver
+     * reads rows positionally, so inserting a column mid-row would silently misread every
+     * stake and price in the ledger.
+     */
+    private static final String CSV_HEADER = "Date,FixtureId,Match,Selection,Probability,Odds,"
+            + "Edge,Stake,Status,PnL,Bankroll,Source,Bookmakers,Competition";
+
+    private static final int COL_FIXTURE_ID = 1;
+    private static final int COL_SELECTION = 3;
+    private static final int COL_ODDS = 5;
+    private static final int COL_STAKE = 7;
+    private static final int COL_STATUS = 8;
+    private static final int COL_PNL = 9;
+    private static final int COL_BANKROLL = 10;
+    /** Rows written before Competition existed are still readable. */
+    private static final int MIN_COLUMNS = 11;
     private static final String FLAT_CSV = "paper_bets_flat.csv";
     private static final String HALF_KELLY_CSV = "paper_bets_half_kelly.csv";
     private static final String FULL_KELLY_CSV = "paper_bets_full_kelly.csv";
@@ -80,7 +99,7 @@ public class PaperBetManager {
             Long fixtureId, Sport sport, String home, String away,
             double pHome, double pDraw, double pAway,
             double oddsHome, Double oddsDraw, double oddsAway,
-            String source, int bookmakers) {
+            String source, int bookmakers, String competition) {
 
         boolean twoWay() {
             return oddsDraw == null;
@@ -271,7 +290,7 @@ public class PaperBetManager {
                                     view.prediction().pHome(), view.prediction().pDraw(),
                                     view.prediction().pAway(),
                                     snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway(),
-                                    AllSportsProvider.NAME, snapshot.bookmakers()));
+                                    AllSportsProvider.NAME, snapshot.bookmakers(), view.competition()));
                         });
             }
         }
@@ -305,7 +324,7 @@ public class PaperBetManager {
                     line.matchedHome(), line.matchedAway(),
                     line.prediction().pHome(), line.prediction().pDraw(), line.prediction().pAway(),
                     line.oddsHome(), line.oddsDraw(), line.oddsAway(),
-                    WinnerService.PROVIDER, 1));
+                    WinnerService.PROVIDER, 1, line.competition()));
         }
         return out;
     }
@@ -326,30 +345,31 @@ public class PaperBetManager {
 
         for (int i = 1; i < lines.size(); i++) {
             String[] parts = lines.get(i).split(",", -1);
-            if (parts.length < 11) {
+            if (parts.length < MIN_COLUMNS) {
                 updated.add(lines.get(i));
                 continue;
             }
             try {
-                double stake = Double.parseDouble(parts[7]);
-                double odds = Double.parseDouble(parts[5]);
+                double stake = Double.parseDouble(parts[COL_STAKE]);
+                double odds = Double.parseDouble(parts[COL_ODDS]);
 
-                if ("PENDING".equals(parts[8])) {
-                    Fixture fixture = fixtureRepository.findById(Long.parseLong(parts[1])).orElse(null);
+                if ("PENDING".equals(parts[COL_STATUS])) {
+                    Fixture fixture = fixtureRepository
+                            .findById(Long.parseLong(parts[COL_FIXTURE_ID])).orElse(null);
                     if (fixture != null && fixture.getStatus().isFinal() && fixture.getHomeScore() != null) {
-                        boolean won = didSelectionWin(parts[3], fixture);
-                        parts[8] = won ? "WON" : "LOST";
-                        parts[9] = String.format("%.2f", won ? stake * (odds - 1.0) : -stake);
+                        boolean won = didSelectionWin(parts[COL_SELECTION], fixture);
+                        parts[COL_STATUS] = won ? "WON" : "LOST";
+                        parts[COL_PNL] = String.format("%.2f", won ? stake * (odds - 1.0) : -stake);
                         resolved++;
                     }
                 }
 
-                if ("PENDING".equals(parts[8])) {
-                    bankroll -= stake;                          // stake tied up
+                if ("PENDING".equals(parts[COL_STATUS])) {
+                    bankroll -= stake;                                   // stake tied up
                 } else {
-                    bankroll += Double.parseDouble(parts[9]);    // net profit, or -stake
+                    bankroll += Double.parseDouble(parts[COL_PNL]);      // net profit, or -stake
                 }
-                parts[10] = String.format("%.2f", bankroll);
+                parts[COL_BANKROLL] = String.format("%.2f", bankroll);
                 updated.add(String.join(",", parts));
             } catch (Exception e) {
                 log.warn("paper betting: unparseable row in {}: {}", csvFile, lines.get(i));
@@ -392,14 +412,14 @@ public class PaperBetManager {
         double current = props.getPaperBetting().getStartingBankroll();
         for (int i = 1; i < lines.size(); i++) {
             String[] parts = lines.get(i).split(",", -1);
-            if (parts.length < 11) {
+            if (parts.length < MIN_COLUMNS) {
                 continue;
             }
             try {
-                if ("PENDING".equals(parts[8])) {
-                    current -= Double.parseDouble(parts[7]);
-                } else if (!parts[9].isEmpty()) {
-                    current += Double.parseDouble(parts[9]);
+                if ("PENDING".equals(parts[COL_STATUS])) {
+                    current -= Double.parseDouble(parts[COL_STAKE]);
+                } else if (!parts[COL_PNL].isEmpty()) {
+                    current += Double.parseDouble(parts[COL_PNL]);
                 }
             } catch (NumberFormatException e) {
                 log.warn("paper betting: bad number in {} row {}", file, i);
@@ -423,10 +443,11 @@ public class PaperBetManager {
                            ValueBetAdvisor.BetRecommendation advice, double stake, double bankroll) {
         String match = (c.home() + " vs " + c.away()).replace(",", " ");
         String selection = selectionCode(advice.recommendedSelection(), c);
-        String row = String.format("%s,%d,%s,%s,%.4f,%.2f,%.4f,%.2f,PENDING,,%.2f,%s,%d",
+        String competition = c.competition() == null ? "" : c.competition().replace(",", " ");
+        String row = String.format("%s,%d,%s,%s,%.4f,%.2f,%.4f,%.2f,PENDING,,%.2f,%s,%d,%s",
                 Instant.now(), c.fixtureId(), match, selection,
                 advice.winProbability(), advice.offeredOdds(), advice.expectedValue(),
-                stake, bankroll, c.source(), c.bookmakers());
+                stake, bankroll, c.source(), c.bookmakers(), competition);
         CsvHelper.appendLine(path(file), row);
         log.info("paper betting: {} <- {}", file, row);
     }
