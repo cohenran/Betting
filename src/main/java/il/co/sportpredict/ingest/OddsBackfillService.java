@@ -1,15 +1,12 @@
 package il.co.sportpredict.ingest;
 
-import il.co.sportpredict.domain.MarketOdds;
 import il.co.sportpredict.domain.Sport;
-import il.co.sportpredict.repo.FixtureRepository;
-import il.co.sportpredict.repo.FixtureSourceRepository;
-import il.co.sportpredict.repo.MarketOddsRepository;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Map;
@@ -17,29 +14,37 @@ import java.util.Map;
 /**
  * Pulls historical market prices into {@code market_odds}.
  *
- * <p>Requests are chunked: the provider returns 500 for a wide range (a 61-day window
- * across a dozen leagues is more than it will build), while a few days at a time works.
- * Prices join to fixtures by the provider's own match id, so no name matching is involved.
+ * <p>Requests are chunked: the provider returns 500 for a wide range (a 61-day window across
+ * a dozen leagues is more than it will build), while a few days at a time works. Prices join
+ * to fixtures by the provider's own match id, so no name matching is involved.
+ *
+ * <p>Each chunk is fetched outside any transaction and committed on its own, so the table
+ * fills visibly as it runs and no database connection is held across the network calls.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OddsBackfillService {
 
-    private static final String PROVIDER = AllSportsProvider.NAME;
+    /** Log this often rather than every chunk, so a year's backfill stays readable. */
+    private static final int LOG_EVERY = 10;
 
     private final AllSportsOddsClient oddsClient;
-    private final FixtureSourceRepository fixtureSources;
-    private final FixtureRepository fixtures;
-    private final MarketOddsRepository marketOdds;
+    private final MarketOddsWriter writer;
+
+    /** Live progress, surfaced by /api/admin/job-status while a backfill runs. */
+    @Getter
+    private volatile String progress = "no backfill run yet";
 
     public record BackfillReport(String sport, String window, int chunks, int pricedMatches,
-                                int stored, int updated, int unmatched) {
+                                int stored, int updated, int unmatched, long seconds) {
     }
 
-    @Transactional
     public BackfillReport backfill(Sport sport, LocalDate from, LocalDate to, int chunkDays) {
         int chunk = Math.max(1, Math.min(chunkDays, 10));
+        long totalChunks = (to.toEpochDay() - from.toEpochDay()) / chunk + 1;
+        Instant startedAt = Instant.now();
+
         int chunks = 0;
         int priced = 0;
         int stored = 0;
@@ -52,47 +57,25 @@ public class OddsBackfillService {
             chunks++;
             priced += odds.size();
 
-            for (OddsSnapshot snapshot : odds.values()) {
-                Long fixtureId = fixtureSources
-                        .findByProviderAndSportAndExternalId(PROVIDER, sport, snapshot.externalId())
-                        .map(source -> source.getFixture().getId())
-                        .orElse(null);
-                if (fixtureId == null) {
-                    unmatched++;
-                    continue;
-                }
-                boolean isNew = upsert(fixtureId, snapshot);
-                if (isNew) {
-                    stored++;
-                } else {
-                    updated++;
-                }
+            if (!odds.isEmpty()) {
+                MarketOddsWriter.ChunkResult result = writer.store(sport, odds);
+                stored += result.stored();
+                updated += result.updated();
+                unmatched += result.unmatched();
+            }
+
+            progress = "%s backfill chunk %d/%d (%s), %d stored, %d unmatched so far"
+                    .formatted(sport, chunks, totalChunks, end, stored, unmatched);
+            if (chunks % LOG_EVERY == 0 || chunks == totalChunks) {
+                log.info("odds backfill: {}", progress);
             }
         }
 
         BackfillReport report = new BackfillReport(sport.name(), from + ".." + to,
-                chunks, priced, stored, updated, unmatched);
-        log.info("odds backfill: {}", report);
+                chunks, priced, stored, updated, unmatched,
+                Duration.between(startedAt, Instant.now()).toSeconds());
+        progress = "done: " + report;
+        log.info("odds backfill finished: {}", report);
         return report;
-    }
-
-    private boolean upsert(Long fixtureId, OddsSnapshot snapshot) {
-        var existing = marketOdds.findByFixtureIdAndProvider(fixtureId, PROVIDER);
-        MarketOdds row = existing.orElseGet(MarketOdds::new);
-        if (existing.isEmpty()) {
-            // A reference proxy is enough - the row only needs the foreign key.
-            row.setFixture(fixtures.getReferenceById(fixtureId));
-        }
-        row.setProvider(PROVIDER);
-        row.setMedianHome(snapshot.medianHome());
-        row.setMedianDraw(snapshot.medianDraw());
-        row.setMedianAway(snapshot.medianAway());
-        row.setBestHome(snapshot.bestHome());
-        row.setBestDraw(snapshot.bestDraw());
-        row.setBestAway(snapshot.bestAway());
-        row.setBookmakers(snapshot.bookmakers());
-        row.setFetchedAt(Instant.now());
-        marketOdds.save(row);
-        return existing.isEmpty();
     }
 }

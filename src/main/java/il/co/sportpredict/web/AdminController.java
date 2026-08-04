@@ -89,9 +89,13 @@ public class AdminController {
     public Map<String, Object> jobStatus(
             @RequestHeader(value = "X-Admin-Token", required = false) String token) {
         authorize(token);
-        return Map.of("running", modelJobs.isRunning(),
-                "job", modelJobs.getCurrentJob(),
-                "status", modelJobs.getStatus());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("running", modelJobs.isRunning());
+        out.put("job", modelJobs.getCurrentJob());
+        out.put("status", modelJobs.getStatus());
+        // The backfill is the one job that reports intermediate progress.
+        out.put("backfillProgress", oddsBackfill.getProgress());
+        return out;
     }
 
     /** Teaches the Winner matcher a name it could not resolve. */
@@ -159,14 +163,15 @@ public class AdminController {
      * range. Run this before /backtest to get the market comparison.
      */
     @PostMapping("/odds-backfill")
-    public OddsBackfillService.BackfillReport oddsBackfill(
+    public Map<String, String> oddsBackfill(
             @RequestHeader(value = "X-Admin-Token", required = false) String token,
             @RequestParam(defaultValue = "FOOTBALL") Sport sport,
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
             @RequestParam(defaultValue = "3") int chunkDays) {
         authorize(token);
-        return oddsBackfill.backfill(sport, from, to, chunkDays);
+        return Map.of("backfill", modelJobs.startOddsBackfill(sport, from, to, chunkDays),
+                "note", "paced by the provider rate limit; poll /job-status for progress");
     }
 
     /**

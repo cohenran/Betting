@@ -1,6 +1,8 @@
 package il.co.sportpredict.model;
 
 import il.co.sportpredict.config.SportPredictProperties;
+import il.co.sportpredict.domain.Sport;
+import il.co.sportpredict.ingest.OddsBackfillService;
 import il.co.sportpredict.model.backtest.BacktestService;
 import il.co.sportpredict.model.backtest.BasketballBacktestService;
 import lombok.Getter;
@@ -10,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -34,6 +37,7 @@ public class ModelJobs {
     private final LearningService learning;
     private final BacktestService backtest;
     private final BasketballBacktestService basketballBacktest;
+    private final OddsBackfillService oddsBackfill;
     private final SportPredictProperties props;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -54,6 +58,11 @@ public class ModelJobs {
                 historyDays != null ? historyDays : props.getModel().getBacktestHistoryDays(),
                 stepDays != null ? stepDays : props.getModel().getBacktestStepDays(),
                 trainFraction != null ? trainFraction : props.getModel().getBacktestTrainFraction()));
+    }
+
+    /** Historical price backfill - minutes of paced HTTP calls, so not on a request thread. */
+    public String startOddsBackfill(Sport sport, LocalDate from, LocalDate to, int chunkDays) {
+        return start("odds-backfill", () -> oddsBackfill.backfill(sport, from, to, chunkDays));
     }
 
     public String startBasketballBacktest(Integer historyDays) {
