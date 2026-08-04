@@ -33,7 +33,8 @@ apt-get install -y -qq \
 
 echo "==> creating service user"
 id -u "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$APP_USER"
-mkdir -p "$APP_DIR" "$ENV_DIR" "$APP_DIR/logs"
+# paper/ holds the dry-run bet ledgers - runtime data, never wiped by a redeploy.
+mkdir -p "$APP_DIR" "$ENV_DIR" "$APP_DIR/logs" "$APP_DIR/paper"
 
 echo "==> configuring PostgreSQL"
 DB_PASSWORD_FILE="$ENV_DIR/db-password"

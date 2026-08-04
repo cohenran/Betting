@@ -69,12 +69,24 @@ sportpredict:
     basketball-leagues: [12, 117, 120]
     seasons: [2024, 2025, 2026]
     history-days: 730
-    lookahead-days: 3
+    # Fallback horizon when lookahead-by-provider is empty.
+    lookahead-days: 14
     # every 4 hours: pull fixtures from yesterday..+lookahead (results + new draws)
     recent-cron: "0 30 */4 * * *"
     # hourly deep backfill of history, one chunk per run
     history-cron: "0 0 * * * *"
     chunk-days: 10
+    # api-sports costs 1 request per day of range, so keep its horizon short.
+    # allsports takes the whole range in one request - it carries the betting horizon.
+    lookahead-by-provider:
+      api-sports: 3
+      allsports: 14
+    # History routing. Football/basketball go to allsports (1 request per 10-day chunk),
+    # leaving the metered api-sports quota for MMA, which has no alternative source.
+    history-providers:
+      FOOTBALL: [allsports]
+      BASKETBALL: [allsports]
+      MMA: [api-sports]
 
   model:
     retrain-cron: "0 0 4 * * *"
@@ -117,6 +129,7 @@ sportpredict:
       - "https://www.winner.co.il/api/v2/games"
       - "https://www.winner.co.il/api/betting/programs"
     # Fuzzy-match threshold when binding a Winner line to a stored fixture.
+    match-threshold: 0.86
     kickoff-tolerance-hours: 30
 
   paper-betting:
@@ -124,3 +137,11 @@ sportpredict:
     winner-url: "https://www.winner.co.il/mainbook/sport"
     cron: "0 0 8 * * *"
     starting-bankroll: 1000.0
+    data-dir: ${PAPER_DIR:/opt/sportpredict/paper}
+    # Flat is the arm that answers "is there an edge". Kelly arms answer a different
+    # question and only become meaningful once calibration is known.
+    flat-stake: 10.0
+    # Do not bet until the Dixon-Coles fit has this many matches behind it.
+    min-fit-sample: 300
+    sports: [FOOTBALL]
+    min-edge: 0.02

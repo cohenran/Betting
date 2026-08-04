@@ -11,7 +11,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Three timers:
@@ -39,13 +42,32 @@ public class IngestScheduler {
     @Scheduled(cron = "${sportpredict.ingest.recent-cron}", zone = "Asia/Jerusalem")
     public void ingestRecent() {
         LocalDate from = LocalDate.now().minusDays(2);
-        LocalDate to = LocalDate.now().plusDays(props.getIngest().getLookaheadDays());
+        Map<String, Integer> horizons = props.getIngest().getLookaheadByProvider();
         try {
-            ingest.ingestRange(from, to, EnumSet.allOf(Sport.class));
+            if (horizons.isEmpty()) {
+                ingest.ingestRange(from, LocalDate.now().plusDays(props.getIngest().getLookaheadDays()),
+                        EnumSet.allOf(Sport.class));
+            } else {
+                // One call per provider so each gets a horizon matched to its request cost:
+                // api-sports pays per day of range, allsports pays once for the whole range.
+                horizons.forEach((provider, days) -> {
+                    LocalDate to = LocalDate.now().plusDays(days);
+                    ingest.ingestRange(from, to, EnumSet.allOf(Sport.class), onlyProvider(provider));
+                });
+            }
             learning.processNewResults();
         } catch (Exception e) {
             log.error("recent ingest failed", e);
         }
+    }
+
+    /** Whitelist restricting every sport to a single provider. */
+    private Map<Sport, List<String>> onlyProvider(String provider) {
+        Map<Sport, List<String>> map = new EnumMap<>(Sport.class);
+        for (Sport sport : Sport.values()) {
+            map.put(sport, List.of(provider));
+        }
+        return map;
     }
 
     @Scheduled(cron = "${sportpredict.ingest.history-cron}", zone = "Asia/Jerusalem")
@@ -63,13 +85,17 @@ public class IngestScheduler {
             }
             LocalDate from = to.minusDays(props.getIngest().getChunkDays());
             try {
-                IngestService.IngestSummary summary = ingest.ingestRange(from, to, EnumSet.of(sport));
+                IngestService.IngestSummary summary = ingest.ingestRange(from, to, EnumSet.of(sport),
+                        props.getIngest().getHistoryProviders());
                 
-                boolean allFailed = !summary.jobs().isEmpty() && summary.jobs().stream()
-                        .allMatch(j -> j.error() != null);
-                
-                if (allFailed) {
-                    log.warn("All providers failed for {} {}..{}. Pausing history backfill for this sport.", sport, from, to);
+                // Advance only when at least one provider actually completed. This also
+                // covers the case where routing left no eligible provider at all - an empty
+                // job list must not look like success, or the chunk is lost forever.
+                boolean anySuccess = summary.jobs().stream().anyMatch(j -> j.error() == null);
+
+                if (!anySuccess) {
+                    log.warn("no provider completed {} {}..{} ({} jobs) - holding cursor for the next run",
+                            sport, from, to, summary.jobs().size());
                     continue;
                 }
 

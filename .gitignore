@@ -1,6 +1,9 @@
 target/
 *.log
 logs/
+# Paper-betting ledgers are runtime data, not source
+*.csv
+paper/
 .idea/
 *.iml
 .vscode/

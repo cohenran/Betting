@@ -1,10 +1,14 @@
 package il.co.sportpredict.config;
 
+import il.co.sportpredict.domain.Sport;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @ConfigurationProperties(prefix = "sportpredict")
@@ -54,6 +58,22 @@ public class SportPredictProperties {
         private int chunkDays = 10;
         private String recentCron = "0 */15 * * * *";
         private String historyCron = "0 20 3 * * *";
+
+        /**
+         * Which providers may serve the history backfill, per sport. api-sports queries
+         * day-by-day (10-day chunk = 10 requests) against a 100/day free cap, while
+         * allsports takes a whole range in one request. Letting football and basketball
+         * history touch api-sports burns the quota that MMA is the only consumer of.
+         * Empty list or missing sport = all providers allowed.
+         */
+        private Map<Sport, List<String>> historyProviders = new EnumMap<>(Sport.class);
+
+        /**
+         * How far ahead each provider looks on the "recent" run. api-sports costs one
+         * request per day of range, so it stays short; allsports covers the full betting
+         * horizon for one request. Missing provider falls back to lookaheadDays.
+         */
+        private Map<String, Integer> lookaheadByProvider = new LinkedHashMap<>();
     }
 
     @Data
@@ -120,5 +140,28 @@ public class SportPredictProperties {
         private String winnerUrl = "https://www.winner.co.il/mainbook/sport";
         private String cron = "0 0 8 * * *"; // Morning run: resolves yesterday, places today
         private double startingBankroll = 1000.0;
+
+        /** Where the CSV ledgers live. Relative paths depend on the working directory. */
+        private String dataDir = "/opt/sportpredict/paper";
+
+        /**
+         * Flat stake for the primary arm. Flat staking is the only arm that answers
+         * "does the edge exist" - Kelly answers "how fast does the bankroll grow if the
+         * probabilities are true", which is a different and currently unanswerable question.
+         */
+        private double flatStake = 10.0;
+
+        /**
+         * Refuse to place paper bets until the Dixon-Coles fit has at least this many
+         * matches behind it. Below that, predictions are Elo cold-start and the edges are
+         * noise, so a month of betting them measures nothing.
+         */
+        private int minFitSample = 300;
+
+        /** Only bet these sports. Football first - it is the one with a real fitted model. */
+        private List<Sport> sports = new ArrayList<>(List.of(Sport.FOOTBALL));
+
+        /** Ignore edges below this: tiny edges are indistinguishable from model error. */
+        private double minEdge = 0.02;
     }
 }

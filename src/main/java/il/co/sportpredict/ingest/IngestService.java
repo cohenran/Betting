@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,7 +51,18 @@ public class IngestService {
     }
 
     public IngestSummary ingestRange(LocalDate from, LocalDate to, Set<Sport> sports) {
+        return ingestRange(from, to, sports, Map.of());
+    }
+
+    /**
+     * @param allowedProviders per-sport whitelist of provider names; a sport that is absent
+     *                         or maps to an empty list may use every provider. Used by the
+     *                         history backfill to keep the metered provider for MMA only.
+     */
+    public IngestSummary ingestRange(LocalDate from, LocalDate to, Set<Sport> sports,
+                                     Map<Sport, List<String>> allowedProviders) {
         Set<Sport> wanted = sports == null || sports.isEmpty() ? EnumSet.allOf(Sport.class) : sports;
+        Map<Sport, List<String>> whitelist = allowedProviders == null ? Map.of() : allowedProviders;
         record Job(SportsProvider provider, Sport sport) {
         }
 
@@ -61,9 +73,15 @@ public class IngestService {
                 continue;
             }
             for (Sport s : wanted) {
-                if (p.supportedSports().contains(s)) {
-                    jobs.add(new Job(p, s));
+                if (!p.supportedSports().contains(s)) {
+                    continue;
                 }
+                List<String> allowed = whitelist.get(s);
+                if (allowed != null && !allowed.isEmpty() && !allowed.contains(p.name())) {
+                    log.debug("provider {} not routed for {} on this run", p.name(), s);
+                    continue;
+                }
+                jobs.add(new Job(p, s));
             }
         }
         if (jobs.isEmpty()) {

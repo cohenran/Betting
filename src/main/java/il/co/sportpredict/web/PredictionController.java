@@ -1,11 +1,14 @@
 package il.co.sportpredict.web;
 
+import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.domain.EventStatus;
 import il.co.sportpredict.domain.Sport;
 import il.co.sportpredict.domain.TeamRating;
 import il.co.sportpredict.model.PredictionService;
 import il.co.sportpredict.model.PredictionView;
 import il.co.sportpredict.model.backtest.BacktestService;
+import il.co.sportpredict.model.football.FootballPredictor;
+import il.co.sportpredict.winner.PaperBetManager;
 import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.repo.PredictionRepository;
 import il.co.sportpredict.repo.TeamRatingRepository;
@@ -26,6 +29,9 @@ public class PredictionController {
     private final TeamRatingRepository ratings;
     private final FixtureRepository fixtures;
     private final PredictionRepository predictionRepo;
+    private final PaperBetManager paperBets;
+    private final FootballPredictor football;
+    private final SportPredictProperties props;
 
     @GetMapping("/predictions/upcoming")
     public List<PredictionView> upcoming(@RequestParam(defaultValue = "FOOTBALL") Sport sport,
@@ -50,6 +56,21 @@ public class PredictionController {
                 .limit(limit)
                 .map(this::ratingRow)
                 .toList();
+    }
+
+    /**
+     * Whether the dry run is actually recording anything. A month of "no value found" and
+     * a month of "the scraper is broken" look identical in the ledger, so check this.
+     */
+    @GetMapping("/paper-betting/status")
+    public Map<String, Object> paperBettingStatus() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("lastRun", paperBets.getLastRunStatus());
+        out.put("footballFitSample", football.currentParams().getSampleSize());
+        out.put("minFitSample", props.getPaperBetting().getMinFitSample());
+        out.put("bettingAllowed",
+                football.currentParams().getSampleSize() >= props.getPaperBetting().getMinFitSample());
+        return out;
     }
 
     @GetMapping("/backtest/football")
