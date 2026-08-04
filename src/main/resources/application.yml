@@ -91,6 +91,11 @@ sportpredict:
   model:
     retrain-cron: "0 0 4 * * *"
     min-matches-for-fit: 120
+    # Walk-forward evaluation after each nightly refit, stored for the paper-bet gate.
+    backtest-after-retrain: true
+    backtest-history-days: 540
+    backtest-step-days: 7
+    backtest-train-fraction: 0.6
     football:
       half-life-days: 240
       iterations: 500
@@ -121,7 +126,7 @@ sportpredict:
     enabled: true
     playwright-enabled: ${PLAYWRIGHT_ENABLED:true}
     timeout-seconds: 45
-    user-agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
     # Candidate internal JSON endpoints tried before falling back to a browser.
     # Winner changes these; add whatever you see in DevTools -> Network.
     json-endpoints:
@@ -143,5 +148,7 @@ sportpredict:
     flat-stake: 10.0
     # Do not bet until the Dixon-Coles fit has this many matches behind it.
     min-fit-sample: 300
+    # Also require the stored backtest to beat the baseline log-loss before betting.
+    require-backtest-edge: true
     sports: [FOOTBALL]
     min-edge: 0.02

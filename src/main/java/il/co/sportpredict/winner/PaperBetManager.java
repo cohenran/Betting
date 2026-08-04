@@ -3,6 +3,7 @@ package il.co.sportpredict.winner;
 import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.domain.Fixture;
 import il.co.sportpredict.domain.Sport;
+import il.co.sportpredict.model.backtest.BacktestService;
 import il.co.sportpredict.model.football.FootballPredictor;
 import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.util.CsvHelper;
@@ -17,6 +18,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Dry-run bet ledger. Records what the model would have staked, resolves it against real
@@ -51,6 +53,7 @@ public class PaperBetManager {
     private final WinnerService winnerService;
     private final FixtureRepository fixtureRepository;
     private final FootballPredictor footballPredictor;
+    private final BacktestService backtest;
     private final SportPredictProperties props;
 
     /** Outcome of the last run, so a silent failure is visible without reading logs. */
@@ -87,6 +90,24 @@ public class PaperBetManager {
             log.warn("paper betting: {} - predictions are still Elo cold-start, refusing to bet",
                     lastRunStatus);
             return;
+        }
+
+        if (props.getPaperBetting().isRequireBacktestEdge()) {
+            Optional<BacktestService.StoredResult> stored = backtest.lastResult();
+            if (stored.isEmpty()) {
+                lastRunStatus = "SKIPPED: no backtest on record yet";
+                log.warn("paper betting: {} - run /api/admin/retrain or the nightly job first",
+                        lastRunStatus);
+                return;
+            }
+            BacktestService.StoredResult result = stored.get();
+            if (!result.beatsBaseline()) {
+                lastRunStatus = "SKIPPED: backtest logLoss %.4f does not beat baseline %.4f"
+                        .formatted(result.logLoss(), result.baselineLogLoss());
+                log.warn("paper betting: {} - the model is not adding information, more history needed",
+                        lastRunStatus);
+                return;
+            }
         }
 
         WinnerService.RoundAnalysis analysis = winnerService.analyzeUrl(props.getPaperBetting().getWinnerUrl());

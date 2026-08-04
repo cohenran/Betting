@@ -4,6 +4,7 @@ import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.domain.IngestCursor;
 import il.co.sportpredict.domain.Sport;
 import il.co.sportpredict.model.LearningService;
+import il.co.sportpredict.model.backtest.BacktestService;
 import il.co.sportpredict.repo.IngestCursorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class IngestScheduler {
 
     private final IngestService ingest;
     private final LearningService learning;
+    private final BacktestService backtest;
     private final IngestCursorRepository cursors;
     private final SportPredictProperties props;
 
@@ -115,6 +117,20 @@ public class IngestScheduler {
             log.info("nightly retrain: {}", report);
         } catch (Exception e) {
             log.error("retrain failed", e);
+            return;
+        }
+        if (!props.getModel().isBacktestAfterRetrain()) {
+            return;
+        }
+        try {
+            // Stored so the paper-bet gate can check "does this model beat the base rates"
+            // without re-running dozens of refits every morning.
+            backtest.runAndStore(props.getModel().getBacktestHistoryDays(),
+                    props.getModel().getBacktestStepDays(),
+                    props.getModel().getBacktestTrainFraction());
+        } catch (Exception e) {
+            // Too little history yet is the normal case early on, not an error worth alarm.
+            log.warn("nightly backtest skipped: {}", e.getMessage());
         }
     }
 }

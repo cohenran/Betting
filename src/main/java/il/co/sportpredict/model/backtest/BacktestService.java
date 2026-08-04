@@ -3,6 +3,7 @@ package il.co.sportpredict.model.backtest;
 import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.domain.Fixture;
 import il.co.sportpredict.domain.Sport;
+import il.co.sportpredict.model.ModelStateStore;
 import il.co.sportpredict.model.football.DixonColesParams;
 import il.co.sportpredict.model.football.DixonColesTrainer;
 import il.co.sportpredict.model.football.ScoreGrid;
@@ -15,6 +16,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Walk-forward backtest of the football model: refit on everything before a cutoff,
@@ -29,11 +31,43 @@ import java.util.List;
 @Slf4j
 public class BacktestService {
 
+    /** model_state key holding the most recent walk-forward outcome. */
+    public static final String STATE_KEY = "football-backtest";
+
     private final FixtureRepository fixtures;
     private final DixonColesTrainer trainer;
+    private final ModelStateStore store;
     private final SportPredictProperties props;
 
     public record Bucket(double predictedLow, double predictedHigh, int count, double predicted, double actual) {
+    }
+
+    /**
+     * Just enough of a backtest to gate on, persisted so callers do not have to re-run a
+     * walk-forward evaluation (dozens of refits) to answer "is the model worth betting".
+     */
+    public record StoredResult(double logLoss, double baselineLogLoss, double accuracy,
+                               int testMatches, String ranAt) {
+
+        /** The minimum bar: the model must be better calibrated than the base rates. */
+        public boolean beatsBaseline() {
+            return logLoss < baselineLogLoss;
+        }
+    }
+
+    public Optional<StoredResult> lastResult() {
+        return store.load(STATE_KEY, StoredResult.class);
+    }
+
+    /** Runs a walk-forward evaluation and persists the headline numbers. */
+    public StoredResult runAndStore(int historyDays, int stepDays, double trainFraction) {
+        BacktestResult result = runFootball(historyDays, stepDays, trainFraction);
+        StoredResult stored = new StoredResult(result.logLoss(), result.baselineLogLoss(),
+                result.accuracy(), result.testMatches(), Instant.now().toString());
+        store.save(STATE_KEY, stored, result.testMatches(), "walk-forward");
+        log.info("stored backtest: logLoss={} baseline={} beatsBaseline={}",
+                stored.logLoss(), stored.baselineLogLoss(), stored.beatsBaseline());
+        return stored;
     }
 
     public record BacktestResult(

@@ -80,6 +80,11 @@ public class SportPredictProperties {
     public static class Model {
         private int minMatchesForFit = 120;
         private String retrainCron = "0 0 4 * * *";
+        /** Walk-forward evaluation run after each nightly refit, and stored for gating. */
+        private boolean backtestAfterRetrain = true;
+        private int backtestHistoryDays = 540;
+        private int backtestStepDays = 7;
+        private double backtestTrainFraction = 0.6;
         private Football football = new Football();
         private Elo elo = new Elo();
         private Basketball basketball = new Basketball();
@@ -128,7 +133,7 @@ public class SportPredictProperties {
         private boolean enabled = true;
         private boolean playwrightEnabled = true;
         private int timeoutSeconds = 45;
-        private String userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+        private String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
         private List<String> jsonEndpoints = new ArrayList<>();
         private double matchThreshold = 0.86;
         private int kickoffToleranceHours = 30;
@@ -157,6 +162,13 @@ public class SportPredictProperties {
          * noise, so a month of betting them measures nothing.
          */
         private int minFitSample = 300;
+
+        /**
+         * Refuse to bet unless the stored backtest shows the model beating the baseline
+         * log-loss. Without this, the dry run can spend a month betting a model that is
+         * measurably worse than assuming the league's base rates.
+         */
+        private boolean requireBacktestEdge = true;
 
         /** Only bet these sports. Football first - it is the one with a real fitted model. */
         private List<Sport> sports = new ArrayList<>(List.of(Sport.FOOTBALL));

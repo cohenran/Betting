@@ -65,11 +65,18 @@ public class PredictionController {
     @GetMapping("/paper-betting/status")
     public Map<String, Object> paperBettingStatus() {
         Map<String, Object> out = new LinkedHashMap<>();
+        int fitSample = football.currentParams().getSampleSize();
+        int minFit = props.getPaperBetting().getMinFitSample();
+        var stored = backtest.lastResult();
+        boolean edgeOk = !props.getPaperBetting().isRequireBacktestEdge()
+                || stored.map(BacktestService.StoredResult::beatsBaseline).orElse(false);
+
         out.put("lastRun", paperBets.getLastRunStatus());
-        out.put("footballFitSample", football.currentParams().getSampleSize());
-        out.put("minFitSample", props.getPaperBetting().getMinFitSample());
-        out.put("bettingAllowed",
-                football.currentParams().getSampleSize() >= props.getPaperBetting().getMinFitSample());
+        out.put("footballFitSample", fitSample);
+        out.put("minFitSample", minFit);
+        out.put("backtest", stored.orElse(null));
+        out.put("beatsBaseline", edgeOk);
+        out.put("bettingAllowed", fitSample >= minFit && edgeOk);
         return out;
     }
 
