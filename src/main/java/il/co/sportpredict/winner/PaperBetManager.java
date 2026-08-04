@@ -3,9 +3,15 @@ package il.co.sportpredict.winner;
 import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.domain.Fixture;
 import il.co.sportpredict.domain.Sport;
+import il.co.sportpredict.ingest.AllSportsOddsClient;
+import il.co.sportpredict.ingest.AllSportsProvider;
+import il.co.sportpredict.ingest.OddsSnapshot;
+import il.co.sportpredict.model.PredictionView;
+import il.co.sportpredict.model.PredictionService;
 import il.co.sportpredict.model.backtest.BacktestService;
 import il.co.sportpredict.model.football.FootballPredictor;
 import il.co.sportpredict.repo.FixtureRepository;
+import il.co.sportpredict.repo.FixtureSourceRepository;
 import il.co.sportpredict.util.CsvHelper;
 import il.co.sportpredict.util.ValueBetAdvisor;
 import lombok.Getter;
@@ -16,28 +22,32 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * Dry-run bet ledger. Records what the model would have staked, resolves it against real
- * results, and writes a CSV per staking rule so the arms can be compared.
+ * results, and writes one CSV per staking rule so the arms can be compared.
+ *
+ * <p>Prices come from either the odds API (unattended, market consensus) or a scraped
+ * betting form. Median prices across bookmakers are used rather than the best available:
+ * shopping the top line across books is not something a bettor tied to one operator can
+ * do, and using it would inflate every edge.
  *
  * <p>Three arms, and the order matters:
  * <ul>
- *   <li><b>flat</b> - fixed stake per bet. The only arm that answers "does the edge exist",
- *       because every bet contributes equally and no sizing rule distorts the result.</li>
- *   <li><b>half-kelly</b> - what growth would look like if the probabilities were true.</li>
- *   <li><b>full-kelly</b> - diagnostic only. Kelly is optimal solely when {@code p} is
- *       correct; on an over-confident model it overbets badly (a model claiming 60% at odds
- *       2.0 stakes 20% of bankroll, when the truth of 52% justifies 4%), and past twice the
- *       correct fraction the expected growth rate turns negative. Expect it to blow up. That
- *       is a statement about stake sizing, not about the model's edge.</li>
+ *   <li><b>flat</b> - fixed stake. The only arm that answers "does the edge exist", since
+ *       every bet contributes equally and no sizing rule distorts the outcome.</li>
+ *   <li><b>half-kelly</b> - what growth looks like if the probabilities are true.</li>
+ *   <li><b>full-kelly</b> - diagnostic. Kelly is optimal only when {@code p} is correct;
+ *       on an over-confident model it overbets badly (claiming 60% at odds 2.0 stakes 20%
+ *       of bankroll where the truth of 52% justifies 4%), and past twice the correct
+ *       fraction expected growth turns negative. Expect it to blow up - that is a fact
+ *       about stake sizing, not about the model's edge.</li>
  * </ul>
- *
- * <p>Betting is refused until the football model has actually been fitted - below that the
- * predictions are Elo cold-start and a month of betting them measures nothing.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,13 +55,16 @@ import java.util.Optional;
 public class PaperBetManager {
 
     private static final String CSV_HEADER =
-            "Date,FixtureId,Match,Selection,Probability,Odds,Edge,Stake,Status,PnL,Bankroll";
+            "Date,FixtureId,Match,Selection,Probability,Odds,Edge,Stake,Status,PnL,Bankroll,Source,Bookmakers";
     private static final String FLAT_CSV = "paper_bets_flat.csv";
     private static final String HALF_KELLY_CSV = "paper_bets_half_kelly.csv";
     private static final String FULL_KELLY_CSV = "paper_bets_full_kelly.csv";
 
     private final WinnerService winnerService;
+    private final AllSportsOddsClient oddsClient;
+    private final PredictionService predictions;
     private final FixtureRepository fixtureRepository;
+    private final FixtureSourceRepository fixtureSources;
     private final FootballPredictor footballPredictor;
     private final BacktestService backtest;
     private final SportPredictProperties props;
@@ -59,6 +72,14 @@ public class PaperBetManager {
     /** Outcome of the last run, so a silent failure is visible without reading logs. */
     @Getter
     private volatile String lastRunStatus = "not run yet";
+
+    /** One priced fixture, whatever the price came from. */
+    private record BetCandidate(
+            Long fixtureId, Sport sport, String home, String away,
+            double pHome, double pDraw, double pAway,
+            double oddsHome, double oddsDraw, double oddsAway,
+            String source, int bookmakers) {
+    }
 
     @Scheduled(cron = "${sportpredict.paper-betting.cron:0 0 8 * * *}", zone = "Asia/Jerusalem")
     public void runDailyTask() {
@@ -80,129 +101,173 @@ public class PaperBetManager {
         log.info("paper betting: daily run finished - {}", lastRunStatus);
     }
 
-    // ---------- placing ----------
+    // ---------- gating ----------
 
-    private void placeBets() {
+    /** Empty when betting is allowed, otherwise the reason it is not. */
+    private Optional<String> blockedReason() {
         int fitSample = footballPredictor.currentParams().getSampleSize();
         int required = props.getPaperBetting().getMinFitSample();
         if (fitSample < required) {
-            lastRunStatus = "SKIPPED: football fit has " + fitSample + " matches, need " + required;
-            log.warn("paper betting: {} - predictions are still Elo cold-start, refusing to bet",
-                    lastRunStatus);
+            return Optional.of("football fit has " + fitSample + " matches, need " + required);
+        }
+        if (!props.getPaperBetting().isRequireBacktestEdge()) {
+            return Optional.empty();
+        }
+        Optional<BacktestService.StoredResult> stored = backtest.lastResult();
+        if (stored.isEmpty()) {
+            return Optional.of("no backtest on record yet");
+        }
+        BacktestService.StoredResult result = stored.get();
+        if (!result.beatsBaseline()) {
+            return Optional.of("backtest logLoss %.4f does not beat baseline %.4f"
+                    .formatted(result.logLoss(), result.baselineLogLoss()));
+        }
+        return Optional.empty();
+    }
+
+    // ---------- placing ----------
+
+    private void placeBets() {
+        Optional<String> blocked = blockedReason();
+        if (blocked.isPresent()) {
+            lastRunStatus = "SKIPPED: " + blocked.get();
+            log.warn("paper betting: {}", lastRunStatus);
             return;
         }
 
-        if (props.getPaperBetting().isRequireBacktestEdge()) {
-            Optional<BacktestService.StoredResult> stored = backtest.lastResult();
-            if (stored.isEmpty()) {
-                lastRunStatus = "SKIPPED: no backtest on record yet";
-                log.warn("paper betting: {} - run /api/admin/retrain or the nightly job first",
-                        lastRunStatus);
-                return;
-            }
-            BacktestService.StoredResult result = stored.get();
-            if (!result.beatsBaseline()) {
-                lastRunStatus = "SKIPPED: backtest logLoss %.4f does not beat baseline %.4f"
-                        .formatted(result.logLoss(), result.baselineLogLoss());
-                log.warn("paper betting: {} - the model is not adding information, more history needed",
-                        lastRunStatus);
-                return;
-            }
-        }
+        List<BetCandidate> candidates = props.getPaperBetting().getOddsSource()
+                == SportPredictProperties.OddsSource.ALLSPORTS
+                ? candidatesFromOddsApi()
+                : candidatesFromWinner();
 
-        WinnerService.RoundAnalysis analysis = winnerService.analyzeUrl(props.getPaperBetting().getWinnerUrl());
-        if (analysis == null || analysis.results() == null || analysis.results().isEmpty()) {
-            // The most likely failure of this whole exercise: the scrape silently returns
-            // nothing for a month and the empty ledger looks like "no value found".
-            lastRunStatus = "FAILED: round parsed to 0 lines from " + props.getPaperBetting().getWinnerUrl();
-            log.error("paper betting: {} - check /api/winner/debug, the parser or the URL is stale",
-                    lastRunStatus);
+        if (candidates.isEmpty()) {
+            // A broken price source and a genuine absence of value produce identical empty
+            // ledgers, so this has to be loud rather than logged as a normal completion.
+            lastRunStatus = "FAILED: no priced fixtures from "
+                    + props.getPaperBetting().getOddsSource();
+            log.error("paper betting: {} - check the odds source, not the model", lastRunStatus);
             return;
         }
 
         for (String file : List.of(FLAT_CSV, HALF_KELLY_CSV, FULL_KELLY_CSV)) {
             initCsv(file);
         }
-
         double flatBankroll = currentBankroll(FLAT_CSV);
         double halfBankroll = currentBankroll(HALF_KELLY_CSV);
         double fullBankroll = currentBankroll(FULL_KELLY_CSV);
         int placed = 0;
-        int skipped = 0;
 
-        for (WinnerService.LineAnalysis line : analysis.results()) {
-            if (!isBettable(line)) {
-                skipped++;
+        for (BetCandidate c : candidates) {
+            ValueBetAdvisor.BetRecommendation advice = advise(c, flatBankroll, 0.5);
+            if (advice.expectedValue() < props.getPaperBetting().getMinEdge()) {
                 continue;
             }
-            Sport sport = Sport.valueOf(line.sport());
-
-            double pHome = line.prediction().pHome();
-            double pDraw = line.prediction().pDraw();
-            double pAway = line.prediction().pAway();
-            double oddsHome = orZero(line.oddsHome());
-            double oddsDraw = orZero(line.oddsDraw());
-            double oddsAway = orZero(line.oddsAway());
-
-            // Flat arm: same selection as Kelly, fixed stake. Bankroll is only bookkeeping
-            // here - a flat arm never sizes down after losses, which is the point.
-            ValueBetAdvisor.BetRecommendation flat = ValueBetAdvisor.analyze3Way(
-                    sport, line.homeRaw(), line.awayRaw(), pHome, pDraw, pAway,
-                    oddsHome, oddsDraw, oddsAway, flatBankroll, 0.5);
-            if (flat.expectedValue() >= props.getPaperBetting().getMinEdge()
-                    && !alreadyBet(FLAT_CSV, line.fixtureId())) {
+            if (!alreadyBet(FLAT_CSV, c.fixtureId())) {
                 double stake = props.getPaperBetting().getFlatStake();
                 flatBankroll -= stake;
-                appendBet(FLAT_CSV, line, flat, stake, flatBankroll);
+                appendBet(FLAT_CSV, c, advice, stake, flatBankroll);
                 placed++;
             }
-
-            halfBankroll = placeKelly(HALF_KELLY_CSV, line, sport, pHome, pDraw, pAway,
-                    oddsHome, oddsDraw, oddsAway, halfBankroll, 0.5);
-            fullBankroll = placeKelly(FULL_KELLY_CSV, line, sport, pHome, pDraw, pAway,
-                    oddsHome, oddsDraw, oddsAway, fullBankroll, 1.0);
+            halfBankroll = placeKelly(HALF_KELLY_CSV, c, halfBankroll, 0.5);
+            fullBankroll = placeKelly(FULL_KELLY_CSV, c, fullBankroll, 1.0);
         }
 
-        lastRunStatus = "OK: %d lines, %d flat bets placed, %d lines skipped"
-                .formatted(analysis.results().size(), placed, skipped);
+        lastRunStatus = "OK: %d priced fixtures, %d flat bets placed (source %s)"
+                .formatted(candidates.size(), placed, props.getPaperBetting().getOddsSource());
         log.info("paper betting: {}", lastRunStatus);
     }
 
-    private double placeKelly(String file, WinnerService.LineAnalysis line, Sport sport,
-                              double pHome, double pDraw, double pAway,
-                              double oddsHome, double oddsDraw, double oddsAway,
-                              double bankroll, double kellyMultiplier) {
-        if (alreadyBet(file, line.fixtureId())) {
+    private ValueBetAdvisor.BetRecommendation advise(BetCandidate c, double bankroll, double kelly) {
+        return ValueBetAdvisor.analyze3Way(c.sport(), c.home(), c.away(),
+                c.pHome(), c.pDraw(), c.pAway(),
+                c.oddsHome(), c.oddsDraw(), c.oddsAway(), bankroll, kelly);
+    }
+
+    private double placeKelly(String file, BetCandidate c, double bankroll, double kellyMultiplier) {
+        if (alreadyBet(file, c.fixtureId())) {
             return bankroll;
         }
-        ValueBetAdvisor.BetRecommendation advice = ValueBetAdvisor.analyze3Way(
-                sport, line.homeRaw(), line.awayRaw(), pHome, pDraw, pAway,
-                oddsHome, oddsDraw, oddsAway, bankroll, kellyMultiplier);
+        ValueBetAdvisor.BetRecommendation advice = advise(c, bankroll, kellyMultiplier);
         if (advice.expectedValue() < props.getPaperBetting().getMinEdge()
                 || advice.recommendedStakeAmount() <= 0) {
             return bankroll;
         }
         double stake = Math.min(advice.recommendedStakeAmount(), Math.max(0, bankroll));
         double remaining = bankroll - stake;
-        appendBet(file, line, advice, stake, remaining);
+        appendBet(file, c, advice, stake, remaining);
         return remaining;
     }
 
-    /** A line is bettable only when it is bound to a real fixture in a configured sport. */
-    private boolean isBettable(WinnerService.LineAnalysis line) {
-        if (line.fixtureId() == null || line.prediction() == null) {
-            return false;
+    // ---------- candidate sources ----------
+
+    /**
+     * Market prices joined onto fixtures by the provider's own match id, so no team-name
+     * matching is involved and nothing can silently bind to the wrong game.
+     */
+    private List<BetCandidate> candidatesFromOddsApi() {
+        LocalDate from = LocalDate.now();
+        LocalDate to = from.plusDays(props.getPaperBetting().getOddsWindowDays());
+        Map<String, OddsSnapshot> odds = oddsClient.fetch(from, to);
+        if (odds.isEmpty()) {
+            log.warn("paper betting: odds API returned nothing for {}..{}", from, to);
+            return List.of();
         }
-        if (line.recommendation() == null || "NONE".equals(line.recommendation())) {
-            return false;
+
+        List<BetCandidate> out = new ArrayList<>();
+        for (OddsSnapshot snapshot : odds.values()) {
+            fixtureSources.findByProviderAndSportAndExternalId(
+                            AllSportsProvider.NAME, Sport.FOOTBALL, snapshot.externalId())
+                    .map(source -> source.getFixture().getId())
+                    .ifPresent(fixtureId -> {
+                        PredictionView view = predictions.predictFixture(fixtureId);
+                        if (!"SCHEDULED".equals(view.status())
+                                || view.startsAt().isBefore(Instant.now())) {
+                            return;
+                        }
+                        if (!props.getPaperBetting().getSports().contains(Sport.valueOf(view.sport()))) {
+                            return;
+                        }
+                        out.add(new BetCandidate(fixtureId, Sport.valueOf(view.sport()),
+                                view.home(), view.away(),
+                                view.prediction().pHome(), view.prediction().pDraw(),
+                                view.prediction().pAway(),
+                                snapshot.medianHome(), snapshot.medianDraw(), snapshot.medianAway(),
+                                AllSportsProvider.NAME, snapshot.bookmakers()));
+                    });
         }
-        Sport sport;
-        try {
-            sport = Sport.valueOf(line.sport());
-        } catch (IllegalArgumentException e) {
-            return false;
+        log.info("paper betting: {} of {} priced matches matched a stored fixture",
+                out.size(), odds.size());
+        return out;
+    }
+
+    private List<BetCandidate> candidatesFromWinner() {
+        WinnerService.RoundAnalysis analysis =
+                winnerService.analyzeUrl(props.getPaperBetting().getWinnerUrl());
+        if (analysis == null || analysis.results() == null) {
+            return List.of();
         }
-        return props.getPaperBetting().getSports().contains(sport);
+        List<BetCandidate> out = new ArrayList<>();
+        for (WinnerService.LineAnalysis line : analysis.results()) {
+            if (line.fixtureId() == null || line.prediction() == null
+                    || line.oddsHome() == null || line.oddsDraw() == null || line.oddsAway() == null) {
+                continue;
+            }
+            Sport sport;
+            try {
+                sport = Sport.valueOf(line.sport());
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
+            if (!props.getPaperBetting().getSports().contains(sport)) {
+                continue;
+            }
+            out.add(new BetCandidate(line.fixtureId(), sport,
+                    line.matchedHome(), line.matchedAway(),
+                    line.prediction().pHome(), line.prediction().pDraw(), line.prediction().pAway(),
+                    line.oddsHome(), line.oddsDraw(), line.oddsAway(),
+                    WinnerService.PROVIDER, 1));
+        }
+        return out;
     }
 
     // ---------- resolving ----------
@@ -230,8 +295,7 @@ public class PaperBetManager {
                 double odds = Double.parseDouble(parts[5]);
 
                 if ("PENDING".equals(parts[8])) {
-                    Long fixtureId = Long.parseLong(parts[1]);
-                    Fixture fixture = fixtureRepository.findById(fixtureId).orElse(null);
+                    Fixture fixture = fixtureRepository.findById(Long.parseLong(parts[1])).orElse(null);
                     if (fixture != null && fixture.getStatus().isFinal() && fixture.getHomeScore() != null) {
                         boolean won = didSelectionWin(parts[3], fixture);
                         parts[8] = won ? "WON" : "LOST";
@@ -241,9 +305,9 @@ public class PaperBetManager {
                 }
 
                 if ("PENDING".equals(parts[8])) {
-                    bankroll -= stake;              // stake is tied up
+                    bankroll -= stake;                          // stake tied up
                 } else {
-                    bankroll += Double.parseDouble(parts[9]);   // net profit or -stake
+                    bankroll += Double.parseDouble(parts[9]);    // net profit, or -stake
                 }
                 parts[10] = String.format("%.2f", bankroll);
                 updated.add(String.join(",", parts));
@@ -315,18 +379,23 @@ public class PaperBetManager {
         return false;
     }
 
-    private void appendBet(String file, WinnerService.LineAnalysis line,
+    private void appendBet(String file, BetCandidate c,
                            ValueBetAdvisor.BetRecommendation advice, double stake, double bankroll) {
-        String match = (line.matchedHome() + " vs " + line.matchedAway()).replace(",", " ");
-        String row = String.format("%s,%d,%s,%s,%.4f,%.2f,%.4f,%.2f,PENDING,,%.2f",
-                Instant.now(), line.fixtureId(), match, line.recommendation(),
+        String match = (c.home() + " vs " + c.away()).replace(",", " ");
+        String selection = selectionCode(advice.recommendedSelection(), c);
+        String row = String.format("%s,%d,%s,%s,%.4f,%.2f,%.4f,%.2f,PENDING,,%.2f,%s,%d",
+                Instant.now(), c.fixtureId(), match, selection,
                 advice.winProbability(), advice.offeredOdds(), advice.expectedValue(),
-                stake, bankroll);
+                stake, bankroll, c.source(), c.bookmakers());
         CsvHelper.appendLine(path(file), row);
         log.info("paper betting: {} <- {}", file, row);
     }
 
-    private double orZero(Double v) {
-        return v == null ? 0 : v;
+    /** ValueBetAdvisor labels the pick with the team name; the ledger stores HOME/DRAW/AWAY. */
+    private String selectionCode(String recommendedSelection, BetCandidate c) {
+        if ("DRAW".equals(recommendedSelection)) {
+            return "DRAW";
+        }
+        return recommendedSelection.contains("(HOME)") ? "HOME" : "AWAY";
     }
 }

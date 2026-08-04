@@ -5,6 +5,7 @@ import il.co.sportpredict.config.SportPredictProperties;
 import il.co.sportpredict.domain.EventStatus;
 import il.co.sportpredict.domain.Sport;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -35,11 +36,11 @@ public class ApiSportsProvider implements SportsProvider {
     private final Set<Integer> footballLeagues;
     private final Set<Integer> basketballLeagues;
 
-    public ApiSportsProvider(RestClient sportsRestClient, SportPredictProperties props) {
+    public ApiSportsProvider(RestClient sportsRestClient, SportPredictProperties props,
+                             @Qualifier("apiSportsLimiter") ProviderRateLimiter limiter) {
         this.http = sportsRestClient;
         this.props = props;
-        SportPredictProperties.ApiSports cfg = props.getProviders().getApiSports();
-        this.limiter = new ProviderRateLimiter(NAME, cfg.getRequestsPerMinute(), cfg.getDailyLimit());
+        this.limiter = limiter;
         this.footballLeagues = new HashSet<>(props.getIngest().getFootballLeagues());
         this.basketballLeagues = new HashSet<>(props.getIngest().getBasketballLeagues());
     }

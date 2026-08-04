@@ -64,10 +64,13 @@ sportpredict:
     # api-sports league ids. 383 = Ligat ha'Al (Israel), 384 = Liga Leumit (Israel).
     # 39 EPL, 140 La Liga, 135 Serie A, 78 Bundesliga, 61 Ligue 1, 2 UCL, 3 Europa League.
     football-leagues: [383, 384, 39, 140, 135, 78, 61, 2, 3]
-    # allsportsapi league ids. Confirmed against met=Leagues: 152 EPL, 302 La Liga,
-    # 207 Serie A, 175 Bundesliga, 3 UCL, 4 Europa League.
-    # TODO verify 149 and add the Israeli leagues - met=Leagues, filter on country_name.
-    allsports-football-leagues: [149, 152, 3, 4, 302, 207, 175]
+    # allsportsapi league ids, all confirmed against met=Leagues.
+    # Israel: 202 Ligat Al, 201 Liga Leumit, 203 Toto Cup, 358 State Cup, 573 Super Cup.
+    #   Liga Alef (610) is deliberately excluded - third tier, thin data, and it drags the
+    #   attack/defence scale around for the clubs that meet it in cup rounds.
+    # Europe: 152 EPL, 302 La Liga, 207 Serie A, 175 Bundesliga,
+    #         3 UCL, 4 Europa League, 683 Conference League.
+    allsports-football-leagues: [202, 201, 203, 358, 573, 152, 302, 207, 175, 3, 4, 683]
     basketball-leagues: [12, 117, 120]
     # Empty = every basketball league allsports carries (~1400 records per 10-day chunk).
     # Fill this in from met=Leagues on their basketball endpoint.
@@ -158,6 +161,11 @@ sportpredict:
     cron: "0 0 8 * * *"
     starting-bankroll: 1000.0
     data-dir: ${PAPER_DIR:/opt/sportpredict/paper}
+    # ALLSPORTS: market prices from met=Odds, joined to fixtures by the provider's own
+    # match id. Runs unattended and costs one request per window.
+    # WINNER: scrape a betting form - needs a page that is not behind bot protection.
+    odds-source: ALLSPORTS
+    odds-window-days: 3
     # Flat is the arm that answers "is there an edge". Kelly arms answer a different
     # question and only become meaningful once calibration is known.
     flat-stake: 10.0

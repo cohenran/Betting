@@ -159,6 +159,15 @@ public class SportPredictProperties {
         private String dataDir = "/opt/sportpredict/paper";
 
         /**
+         * ALLSPORTS reads market prices from the odds API and runs unattended. WINNER
+         * scrapes a betting form, which needs a page that is not behind bot protection.
+         */
+        private OddsSource oddsSource = OddsSource.ALLSPORTS;
+
+        /** How far ahead to price fixtures. One request covers the whole window. */
+        private int oddsWindowDays = 3;
+
+        /**
          * Flat stake for the primary arm. Flat staking is the only arm that answers
          * "does the edge exist" - Kelly answers "how fast does the bankroll grow if the
          * probabilities are true", which is a different and currently unanswerable question.
@@ -184,5 +193,11 @@ public class SportPredictProperties {
 
         /** Ignore edges below this: tiny edges are indistinguishable from model error. */
         private double minEdge = 0.02;
+    }
+
+    /** Where the paper-betting prices come from. */
+    public enum OddsSource {
+        ALLSPORTS,
+        WINNER
     }
 }
