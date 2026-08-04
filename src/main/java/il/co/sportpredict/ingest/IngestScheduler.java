@@ -16,6 +16,7 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Three timers:
@@ -53,14 +54,30 @@ public class IngestScheduler {
                 // One call per provider so each gets a horizon matched to its request cost:
                 // api-sports pays per day of range, allsports pays once for the whole range.
                 horizons.forEach((provider, days) -> {
+                    Set<Sport> sports = sportsFor(provider, props.getIngest().getRecentProviders());
+                    if (sports.isEmpty()) {
+                        return;
+                    }
                     LocalDate to = LocalDate.now().plusDays(days);
-                    ingest.ingestRange(from, to, EnumSet.allOf(Sport.class), onlyProvider(provider));
+                    ingest.ingestRange(from, to, sports, onlyProvider(provider));
                 });
             }
             learning.processNewResults();
         } catch (Exception e) {
             log.error("recent ingest failed", e);
         }
+    }
+
+    /** Sports this provider is routed to serve. Absent or empty routing means all of them. */
+    private Set<Sport> sportsFor(String provider, Map<Sport, List<String>> routing) {
+        Set<Sport> out = EnumSet.noneOf(Sport.class);
+        for (Sport sport : Sport.values()) {
+            List<String> allowed = routing.get(sport);
+            if (allowed == null || allowed.isEmpty() || allowed.contains(provider)) {
+                out.add(sport);
+            }
+        }
+        return out;
     }
 
     /** Whitelist restricting every sport to a single provider. */

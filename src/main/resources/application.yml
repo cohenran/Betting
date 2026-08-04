@@ -64,9 +64,14 @@ sportpredict:
     # api-sports league ids. 383 = Ligat ha'Al (Israel), 384 = Liga Leumit (Israel).
     # 39 EPL, 140 La Liga, 135 Serie A, 78 Bundesliga, 61 Ligue 1, 2 UCL, 3 Europa League.
     football-leagues: [383, 384, 39, 140, 135, 78, 61, 2, 3]
-    # allsportsapi league ids for the same competitions (verify against their /Leagues endpoint).
-    allsports-football-leagues: [149, 152, 3, 302, 207, 175, 168]
+    # allsportsapi league ids. Confirmed against met=Leagues: 152 EPL, 302 La Liga,
+    # 207 Serie A, 175 Bundesliga, 3 UCL, 4 Europa League.
+    # TODO verify 149 and add the Israeli leagues - met=Leagues, filter on country_name.
+    allsports-football-leagues: [149, 152, 3, 4, 302, 207, 175]
     basketball-leagues: [12, 117, 120]
+    # Empty = every basketball league allsports carries (~1400 records per 10-day chunk).
+    # Fill this in from met=Leagues on their basketball endpoint.
+    allsports-basketball-leagues: []
     seasons: [2024, 2025, 2026]
     history-days: 730
     # Fallback horizon when lookahead-by-provider is empty.
@@ -81,6 +86,16 @@ sportpredict:
     lookahead-by-provider:
       api-sports: 3
       allsports: 14
+    # api-sports free tier is 100 requests/day. Budget, with recent-cron every 4 hours:
+    #   recent  MMA only, 6-day window = 6 req x 6 runs/day = 36
+    #   history MMA only, 10-day chunk = 11 req  -> ~5 chunks/day within the remaining 64
+    # That backfills ~50 days of MMA per day: 730 days in roughly two weeks.
+    # Letting api-sports also serve football/basketball on the recent run costs 72 req/day
+    # duplicating what allsports gives away, and starves MMA completely.
+    recent-providers:
+      FOOTBALL: [allsports]
+      BASKETBALL: [allsports]
+      MMA: [api-sports]
     # History routing. Football/basketball go to allsports (1 request per 10-day chunk),
     # leaving the metered api-sports quota for MMA, which has no alternative source.
     history-providers:

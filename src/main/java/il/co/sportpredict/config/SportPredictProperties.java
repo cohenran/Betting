@@ -52,6 +52,8 @@ public class SportPredictProperties {
         private List<Integer> footballLeagues = new ArrayList<>();
         private List<Integer> allsportsFootballLeagues = new ArrayList<>();
         private List<Integer> basketballLeagues = new ArrayList<>();
+        /** Empty means "every basketball league on the provider" - about 140 records a day. */
+        private List<Integer> allsportsBasketballLeagues = new ArrayList<>();
         private List<Integer> seasons = new ArrayList<>();
         private int historyDays = 730;
         private int lookaheadDays = 14;
@@ -67,6 +69,13 @@ public class SportPredictProperties {
          * Empty list or missing sport = all providers allowed.
          */
         private Map<Sport, List<String>> historyProviders = new EnumMap<>(Sport.class);
+
+        /**
+         * Same idea for the "recent" run. Without this, api-sports spends its whole 100/day
+         * quota re-fetching football and basketball that allsports already covers for free,
+         * and MMA - which has no other source - gets nothing at all.
+         */
+        private Map<Sport, List<String>> recentProviders = new EnumMap<>(Sport.class);
 
         /**
          * How far ahead each provider looks on the "recent" run. api-sports costs one

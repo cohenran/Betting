@@ -36,6 +36,7 @@ public class AllSportsProvider implements SportsProvider {
     private final SportPredictProperties props;
     private final ProviderRateLimiter limiter;
     private final Set<Integer> footballLeagues;
+    private final Set<Integer> basketballLeagues;
 
     public AllSportsProvider(RestClient sportsRestClient, SportPredictProperties props) {
         this.http = sportsRestClient;
@@ -43,6 +44,7 @@ public class AllSportsProvider implements SportsProvider {
         SportPredictProperties.AllSports cfg = props.getProviders().getAllsports();
         this.limiter = new ProviderRateLimiter(NAME, cfg.getRequestsPerMinute(), cfg.getDailyLimit());
         this.footballLeagues = new HashSet<>(props.getIngest().getAllsportsFootballLeagues());
+        this.basketballLeagues = new HashSet<>(props.getIngest().getAllsportsBasketballLeagues());
     }
 
     @Override
@@ -111,7 +113,8 @@ public class AllSportsProvider implements SportsProvider {
 
     private RawFixture map(Sport sport, JsonNode n) {
         int leagueKey = n.path("league_key").asInt(-1);
-        if (sport == Sport.FOOTBALL && !footballLeagues.isEmpty() && !footballLeagues.contains(leagueKey)) {
+        Set<Integer> allowed = sport == Sport.FOOTBALL ? footballLeagues : basketballLeagues;
+        if (!allowed.isEmpty() && !allowed.contains(leagueKey)) {
             return null;
         }
         String id = n.path("event_key").asText(null);
