@@ -1,6 +1,7 @@
 package il.co.sportpredict.model.backtest;
 
 import il.co.sportpredict.domain.Fixture;
+import il.co.sportpredict.domain.MarketOdds;
 import il.co.sportpredict.domain.Sport;
 import il.co.sportpredict.domain.TeamRating;
 import il.co.sportpredict.model.MatchPrediction;
@@ -8,6 +9,7 @@ import il.co.sportpredict.model.ModelStateStore;
 import il.co.sportpredict.model.basketball.BasketballPredictor;
 import il.co.sportpredict.model.elo.EloService;
 import il.co.sportpredict.repo.FixtureRepository;
+import il.co.sportpredict.repo.MarketOddsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,7 @@ public class BasketballBacktestService {
     private static final double BURN_IN = 0.4;
 
     private final FixtureRepository fixtures;
+    private final MarketOddsRepository marketOdds;
     private final BasketballPredictor predictor;
     private final EloService elo;
     private final ModelStateStore store;
@@ -63,6 +66,18 @@ public class BasketballBacktestService {
 
         Map<String, TeamRating> ratings = new HashMap<>();
         int burnIn = (int) (games.size() * BURN_IN);
+
+        // Market prices for the same games, so the replay can answer the only question that
+        // decides profitability: does the model beat the closing line, not just the base rate.
+        Map<Long, MarketOdds> oddsByFixture = new HashMap<>();
+        marketOdds.findBySport(Sport.BASKETBALL)
+                .forEach(o -> oddsByFixture.put(o.getFixture().getId(), o));
+        double marketModelLogLoss = 0;
+        double marketLogLoss = 0;
+        int marketModelCorrect = 0;
+        int marketCorrect = 0;
+        double overroundSum = 0;
+        int marketMatches = 0;
 
         double sumLogLoss = 0;
         double sumBrier = 0;
@@ -97,6 +112,21 @@ public class BasketballBacktestService {
                     baseCorrect++;
                 }
                 scored++;
+
+                MarketOdds odds = oddsByFixture.get(game.getId());
+                if (odds != null && odds.twoWay()) {
+                    double marketHome = clamp(odds.impliedProbabilities()[0]);
+                    marketModelLogLoss += -Math.log(homeWon ? pHome : 1 - pHome);
+                    marketLogLoss += -Math.log(homeWon ? marketHome : 1 - marketHome);
+                    if ((pHome >= 0.5) == homeWon) {
+                        marketModelCorrect++;
+                    }
+                    if ((marketHome >= 0.5) == homeWon) {
+                        marketCorrect++;
+                    }
+                    overroundSum += 1 / odds.getMedianHome() + 1 / odds.getMedianAway() - 1;
+                    marketMatches++;
+                }
             }
 
             elo.applyFixture(game, home, away);
@@ -110,12 +140,27 @@ public class BasketballBacktestService {
             throw new IllegalStateException("basketball backtest scored 0 games - widen the range");
         }
 
+        BacktestService.MarketComparison comparison = null;
+        if (marketMatches > 0) {
+            double model = marketModelLogLoss / marketMatches;
+            double market = marketLogLoss / marketMatches;
+            comparison = new BacktestService.MarketComparison(marketMatches,
+                    round(model), round(market),
+                    round((double) marketModelCorrect / marketMatches),
+                    round((double) marketCorrect / marketMatches),
+                    round(overroundSum / marketMatches),
+                    model < market
+                            ? "model beats the market by %.4f nats/match on %d games"
+                                    .formatted(market - model, marketMatches)
+                            : ("model loses to the market by %.4f nats/match on %d games - "
+                                    + "betting into these prices has negative expectation")
+                                    .formatted(model - market, marketMatches));
+        }
+
         BacktestService.StoredResult result = new BacktestService.StoredResult(
                 round(sumLogLoss / scored), round(baseLogLoss / scored),
                 round((double) correct / scored), scored, Instant.now().toString(),
-                // No market comparison for basketball yet - prices are stored but the
-                // two-way moneyline is not wired into this replay.
-                null);
+                comparison);
         store.save(STATE_KEY, result, scored, "elo-walk-forward");
         log.info("basketball backtest: {} games scored, logLoss={} baseline={} accuracy={} "
                         + "(baseline accuracy {}), brier={}",

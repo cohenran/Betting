@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClient;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -58,7 +59,8 @@ public class ApiSportsProvider implements SportsProvider {
 
     @Override
     public Set<Sport> supportedSports() {
-        return Set.of(Sport.FOOTBALL, Sport.BASKETBALL, Sport.MMA);
+        List<Sport> configured = props.getProviders().getApiSports().getSports();
+        return configured.isEmpty() ? Set.of(Sport.MMA) : EnumSet.copyOf(configured);
     }
 
     @Override

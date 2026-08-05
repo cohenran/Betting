@@ -47,6 +47,10 @@ sportpredict:
     api-sports:
       enabled: ${APISPORTS_ENABLED:true}
       key: ${APISPORTS_KEY:}
+      # MMA only. Football and basketball come free from allsports, so the whole 100/day
+      # quota goes to the one sport with no alternative source. Enforced in the provider,
+      # so a manual ingest that forgets the routing filter cannot spend it elsewhere.
+      sports: [MMA]
       # Free tier is 10 req/min, 100 req/day. Raise once you upgrade.
       requests-per-minute: ${APISPORTS_RPM:10}
       daily-limit: ${APISPORTS_DAILY:100}

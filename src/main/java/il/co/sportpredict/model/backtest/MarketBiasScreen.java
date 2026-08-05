@@ -78,8 +78,9 @@ public class MarketBiasScreen {
     ) {
     }
 
+    /** {@code drawRoi} is null for two-way markets, which have no draw leg. */
     public record CompetitionRow(String competition, int matches,
-                                 double homeRoi, double drawRoi, double awayRoi) {
+                                 double homeRoi, Double drawRoi, double awayRoi) {
     }
 
     public BiasReport run(Sport sport, int minBookmakers) {
@@ -97,42 +98,65 @@ public class MarketBiasScreen {
         double overroundSum = 0;
         int matches = 0;
 
+        boolean sawThreeWay = false;
         for (MarketOdds odds : settled) {
-            if (odds.twoWay()) {
-                continue;
-            }
             Fixture fixture = odds.getFixture();
             int outcome = outcomeIndex(fixture);
             double[] implied = odds.impliedProbabilities();
-            double[] prices = {odds.getMedianHome(), odds.getMedianDraw(), odds.getMedianAway()};
 
-            for (int side = 0; side < 3; side++) {
-                boolean won = side == outcome;
-                Accumulator target = side == 0 ? home : (side == 1 ? draw : away);
-                target.add(prices[side], implied[side], won);
-                buckets.computeIfAbsent(bucketLabel(prices[side]), key -> new Accumulator())
-                        .add(prices[side], implied[side], won);
+            // Two-way markets (basketball moneyline) have no draw leg at all. Previously
+            // these were skipped outright, which silently excluded every basketball match
+            // from the screen.
+            double[] prices;
+            int drawSide;
+            if (odds.twoWay()) {
+                if (outcome == 1) {
+                    continue;   // a tied final score has no two-way settlement
+                }
+                prices = new double[]{odds.getMedianHome(), odds.getMedianAway()};
+                outcome = outcome == 0 ? 0 : 1;
+                drawSide = -1;
+            } else {
+                prices = new double[]{odds.getMedianHome(), odds.getMedianDraw(), odds.getMedianAway()};
+                drawSide = 1;
+                sawThreeWay = true;
             }
 
             String competition = fixture.getCompetition() == null
                     ? "(unknown)" : fixture.getCompetition().getName();
-            Accumulator[] byOutcome = perCompetition.computeIfAbsent(competition,
+            Accumulator[] byCompetitionSides = perCompetition.computeIfAbsent(competition,
                     key -> new Accumulator[]{new Accumulator(), new Accumulator(), new Accumulator()});
-            for (int side = 0; side < 3; side++) {
-                byOutcome[side].add(prices[side], implied[side], side == outcome);
+
+            for (int side = 0; side < prices.length; side++) {
+                boolean won = side == outcome;
+                // Map a two-way away leg onto the away accumulator, not the draw one.
+                int canonical = drawSide < 0 && side == 1 ? 2 : side;
+                Accumulator target = canonical == 0 ? home : (canonical == 1 ? draw : away);
+                target.add(prices[side], implied[side], won);
+                byCompetitionSides[canonical].add(prices[side], implied[side], won);
+                buckets.computeIfAbsent(bucketLabel(prices[side]), key -> new Accumulator())
+                        .add(prices[side], implied[side], won);
             }
 
-            overroundSum += 1 / prices[0] + 1 / prices[1] + 1 / prices[2] - 1;
+            double inverseSum = 0;
+            for (double price : prices) {
+                inverseSum += 1 / price;
+            }
+            overroundSum += inverseSum - 1;
             matches++;
         }
 
         if (matches == 0) {
-            throw new IllegalStateException("no three-way priced matches found for " + sport);
+            throw new IllegalStateException("no priced settled matches found for " + sport);
         }
 
         double averageOverround = overroundSum / matches;
-        List<Row> outcomeRows = List.of(
-                home.toRow("back home"), draw.toRow("back draw"), away.toRow("back away"));
+        List<Row> outcomeRows = new ArrayList<>();
+        outcomeRows.add(home.toRow("back home"));
+        if (sawThreeWay) {
+            outcomeRows.add(draw.toRow("back draw"));
+        }
+        outcomeRows.add(away.toRow("back away"));
 
         List<Row> bucketRows = new ArrayList<>();
         for (String label : BUCKET_LABELS) {
@@ -146,7 +170,9 @@ public class MarketBiasScreen {
         perCompetition.forEach((name, sides) -> {
             if (sides[0].bets >= 30) {
                 competitionRows.add(new CompetitionRow(name, sides[0].bets,
-                        round(sides[0].roi()), round(sides[1].roi()), round(sides[2].roi())));
+                        round(sides[0].roi()),
+                        sides[1].bets == 0 ? null : round(sides[1].roi()),
+                        round(sides[2].roi())));
             }
         });
         competitionRows.sort((a, b) -> Integer.compare(b.matches(), a.matches()));

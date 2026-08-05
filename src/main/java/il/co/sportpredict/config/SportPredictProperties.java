@@ -33,6 +33,14 @@ public class SportPredictProperties {
         private String key = "";
         private int requestsPerMinute = 10;
         private int dailyLimit = 100;
+
+        /**
+         * Sports this provider will serve at all, enforced in the provider itself rather
+         * than only in the scheduler's routing. Football and basketball come free from
+         * allsports, so spending a 100/day quota on them starves MMA - which has no other
+         * source. A routing whitelist can be forgotten on a manual call; this cannot.
+         */
+        private List<Sport> sports = new ArrayList<>(List.of(Sport.MMA));
         private String footballBaseUrl = "https://v3.football.api-sports.io";
         private String basketballBaseUrl = "https://v1.basketball.api-sports.io";
         private String mmaBaseUrl = "https://v1.mma.api-sports.io";
