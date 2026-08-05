@@ -19,4 +19,17 @@ public interface MarketOddsRepository extends JpaRepository<MarketOdds, Long> {
 
     @Query("select count(o) from MarketOdds o where o.fixture.sport = :sport")
     long countBySport(@Param("sport") Sport sport);
+
+    /** Settled matches with prices, for measuring how well the market itself was calibrated. */
+    @Query("""
+           select o from MarketOdds o
+             join fetch o.fixture f
+             left join fetch f.competition
+           where f.sport = :sport
+             and f.status = il.co.sportpredict.domain.EventStatus.FINISHED
+             and f.homeScore is not null
+             and o.bookmakers >= :minBookmakers
+           """)
+    List<MarketOdds> findSettled(@Param("sport") Sport sport,
+                                 @Param("minBookmakers") int minBookmakers);
 }

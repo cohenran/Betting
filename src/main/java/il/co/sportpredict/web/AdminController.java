@@ -15,6 +15,7 @@ import il.co.sportpredict.model.ModelJobs;
 import il.co.sportpredict.model.backtest.BacktestService;
 import il.co.sportpredict.model.backtest.BasketballBacktestService;
 import il.co.sportpredict.model.backtest.MarketBenchmarkService;
+import il.co.sportpredict.model.backtest.MarketBiasScreen;
 import il.co.sportpredict.winner.PaperBetManager;
 import il.co.sportpredict.repo.FixtureRepository;
 import il.co.sportpredict.repo.FixtureSourceRepository;
@@ -46,6 +47,7 @@ public class AdminController {
     private final BacktestService backtestService;
     private final BasketballBacktestService basketballBacktest;
     private final MarketBenchmarkService marketBenchmark;
+    private final MarketBiasScreen marketBias;
     private final OddsBackfillService oddsBackfill;
     private final PaperBetManager paperBets;
     private final AllSportsOddsClient oddsClient;
@@ -165,6 +167,19 @@ public class AdminController {
      * model against the bookmakers. Chunked, because the provider returns 500 for a wide
      * range. Run this before /backtest to get the market comparison.
      */
+    /**
+     * Tests the market for systematic mispricing - longshot bias, draw aversion, and so on -
+     * using stored prices and results only, no model involved.
+     */
+    @GetMapping("/market-bias")
+    public MarketBiasScreen.BiasReport marketBias(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(defaultValue = "FOOTBALL") Sport sport,
+            @RequestParam(defaultValue = "3") int minBookmakers) {
+        authorize(token);
+        return marketBias.run(sport, minBookmakers);
+    }
+
     @PostMapping("/odds-backfill")
     public Map<String, String> oddsBackfill(
             @RequestHeader(value = "X-Admin-Token", required = false) String token,
