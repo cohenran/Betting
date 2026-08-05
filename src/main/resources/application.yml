@@ -83,7 +83,10 @@ sportpredict:
     allsports-basketball-leagues: [766, 784, 763, 1078, 804, 956]
     seasons: [2024, 2025, 2026]
     sports: [FOOTBALL, BASKETBALL, MMA]
-    history-days: 730
+    # Five years. Older matches barely affect the model - the 240-day half-life leaves
+    # anything past two years weighted under 0.125 - but the market-bias screen uses raw
+    # results with no decay, so extra history is pure statistical power there.
+    history-days: 1825
     # Fallback horizon when lookahead-by-provider is empty.
     lookahead-days: 14
     # every 4 hours: pull fixtures from yesterday..+lookahead (results + new draws)
