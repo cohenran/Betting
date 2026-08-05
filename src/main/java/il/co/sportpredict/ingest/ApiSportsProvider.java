@@ -119,6 +119,53 @@ public class ApiSportsProvider implements SportsProvider {
         return Batch.of(out, requests);
     }
 
+    /**
+     * All fights of one season, paginated.
+     *
+     * <p>Vastly cheaper than the per-date path this provider uses elsewhere: a date query
+     * costs one request per day, so five years of history is ~1,825 requests against a
+     * 100/day cap. A season is a few pages. The free plan only serves seasons 2022-2024 and
+     * reports that in an {@code errors.plan} field rather than an HTTP error.
+     */
+    public Batch<RawFight> fetchFightsBySeason(int season) {
+        List<RawFight> out = new ArrayList<>();
+        int requests = 0;
+        int page = 1;
+        int totalPages = 1;
+        String baseUrl = props.getProviders().getApiSports().getMmaBaseUrl();
+
+        while (page <= totalPages) {
+            try {
+                limiter.acquire();
+                requests++;
+                JsonNode root = get(baseUrl + "/fights?season=" + season + "&page=" + page);
+
+                JsonNode planError = root.path("errors").path("plan");
+                if (!planError.isMissingNode()) {
+                    return Batch.failed(out, requests, "season " + season + ": " + planError.asText());
+                }
+                totalPages = Math.max(1, root.path("paging").path("total").asInt(1));
+                for (JsonNode node : root.path("response")) {
+                    RawFight fight = mapFight(node);
+                    if (fight != null) {
+                        out.add(fight);
+                    }
+                }
+                page++;
+            } catch (ProviderRateLimiter.DailyLimitReachedException e) {
+                return Batch.failed(out, requests, e.getMessage());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Batch.failed(out, requests, "interrupted");
+            } catch (Exception e) {
+                log.warn("api-sports MMA season {} page {} failed: {}", season, page, e.getMessage());
+                return Batch.failed(out, requests, "season " + season + ": " + e.getMessage());
+            }
+        }
+        log.info("api-sports MMA season {}: {} fights in {} requests", season, out.size(), requests);
+        return Batch.of(out, requests);
+    }
+
     private JsonNode get(String url) {
         return http.get()
                 .uri(url)

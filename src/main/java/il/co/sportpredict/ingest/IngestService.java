@@ -55,6 +55,42 @@ public class IngestService {
     }
 
     /**
+     * MMA history by season rather than by date. The per-date path costs one request per day
+     * against a 100/day cap; a season costs a few pages, which is the difference between
+     * eighteen days of backfill and a couple of minutes.
+     */
+    public List<JobResult> ingestMmaSeasons(List<Integer> seasons) {
+        ApiSportsProvider apiSports = providers.stream()
+                .filter(ApiSportsProvider.class::isInstance)
+                .map(ApiSportsProvider.class::cast)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("api-sports provider is not configured"));
+        if (!apiSports.enabled()) {
+            throw new IllegalStateException("api-sports is disabled or missing its API key");
+        }
+
+        List<JobResult> results = new ArrayList<>();
+        for (Integer season : seasons) {
+            SportsProvider.Batch<RawFight> batch = apiSports.fetchFightsBySeason(season);
+            FixtureUpsertService.UpsertResult upserted = fightUpsert.upsertAll(batch.items());
+
+            IngestRun run = new IngestRun(apiSports.name(), Sport.MMA,
+                    LocalDate.of(season, 1, 1), LocalDate.of(season, 12, 31));
+            run.setRequests(batch.requests());
+            run.setRecords(batch.items().size());
+            run.setCreated(upserted.created());
+            run.setUpdated(upserted.updated());
+            run.setError(batch.error());
+            run.setFinishedAt(Instant.now());
+            runs.save(run);
+
+            results.add(new JobResult(apiSports.name(), Sport.MMA, batch.requests(),
+                    batch.items().size(), upserted.created(), upserted.updated(), batch.error()));
+        }
+        return results;
+    }
+
+    /**
      * @param allowedProviders per-sport whitelist of provider names; a sport that is absent
      *                         or maps to an empty list may use every provider. Used by the
      *                         history backfill to keep the metered provider for MMA only.

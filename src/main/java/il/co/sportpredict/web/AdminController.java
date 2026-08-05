@@ -87,6 +87,18 @@ public class AdminController {
         return ingest.ingestRange(start, end, wanted, routing);
     }
 
+    /**
+     * MMA history by season. The free api-sports plan serves seasons 2022-2024 only, and
+     * reports anything else as a plan error in the job's error field rather than failing.
+     */
+    @PostMapping("/mma-seasons")
+    public List<IngestService.JobResult> mmaSeasons(
+            @RequestHeader(value = "X-Admin-Token", required = false) String token,
+            @RequestParam(defaultValue = "2022,2023,2024") List<Integer> seasons) {
+        authorize(token);
+        return ingest.ingestMmaSeasons(seasons);
+    }
+
     @PostMapping("/learn")
     public Map<String, Object> learn(@RequestHeader(value = "X-Admin-Token", required = false) String token) {
         authorize(token);
