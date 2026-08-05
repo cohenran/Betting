@@ -160,7 +160,9 @@ public class BasketballBacktestService {
         BacktestService.StoredResult result = new BacktestService.StoredResult(
                 round(sumLogLoss / scored), round(baseLogLoss / scored),
                 round((double) correct / scored), scored, Instant.now().toString(),
-                comparison);
+                comparison,
+                // Blending is wired for football only so far.
+                null);
         store.save(STATE_KEY, result, scored, "elo-walk-forward");
         log.info("basketball backtest: {} games scored, logLoss={} baseline={} accuracy={} "
                         + "(baseline accuracy {}), brier={}",

@@ -52,7 +52,8 @@ public class BacktestService {
      * walk-forward evaluation (dozens of refits) to answer "is the model worth betting".
      */
     public record StoredResult(double logLoss, double baselineLogLoss, double accuracy,
-                               int testMatches, String ranAt, MarketComparison market) {
+                               int testMatches, String ranAt, MarketComparison market,
+                               BlendResult blend) {
 
         /** The minimum bar: the model must be better calibrated than the base rates. */
         public boolean beatsBaseline() {
@@ -77,10 +78,12 @@ public class BacktestService {
     public StoredResult runAndStore(int historyDays, int stepDays, double trainFraction) {
         BacktestResult result = runFootball(historyDays, stepDays, trainFraction);
         StoredResult stored = new StoredResult(result.logLoss(), result.baselineLogLoss(),
-                result.accuracy(), result.testMatches(), Instant.now().toString(), result.market());
+                result.accuracy(), result.testMatches(), Instant.now().toString(),
+                result.market(), result.blend());
         store.save(STATE_KEY, stored, result.testMatches(), "walk-forward");
-        log.info("stored backtest: logLoss={} baseline={} beatsBaseline={} beatsMarket={}",
-                stored.logLoss(), stored.baselineLogLoss(), stored.beatsBaseline(), stored.beatsMarket());
+        log.info("stored backtest: logLoss={} baseline={} beatsBaseline={} beatsMarket={} blend={}",
+                stored.logLoss(), stored.baselineLogLoss(), stored.beatsBaseline(),
+                stored.beatsMarket(), result.blend() == null ? "n/a" : result.blend().verdict());
         return stored;
     }
 
@@ -96,7 +99,8 @@ public class BacktestService {
             double baselineBrier,
             double baselineAccuracy,
             List<Bucket> calibration,
-            MarketComparison market
+            MarketComparison market,
+            BlendResult blend
     ) {
     }
 
@@ -119,6 +123,37 @@ public class BacktestService {
             double averageOverround,
             String verdict
     ) {
+    }
+
+    /**
+     * Does the market's price plus this model beat the market's price alone?
+     *
+     * <p>Trying to out-forecast a bookmaker from raw data is the losing framing. The one
+     * with a track record for small operations is to start from the price - which already
+     * contains everything the market knows - and let a model adjust it only where it holds
+     * information the price lacks. If the model carries no residual information, the fitted
+     * weight collapses toward zero and the blend simply reproduces the market.
+     *
+     * <p>Probabilities are pooled log-linearly, {@code p ∝ market^(1-w) · model^w}, which is
+     * the standard combination for probability forecasts scored by log-loss.
+     *
+     * <p>{@code weight} is fitted on the earlier half of the tested matches and every
+     * log-loss here is measured on the later half, so the weight never sees what it is
+     * scored on.
+     */
+    public record BlendResult(
+            int fitMatches,
+            int testMatches,
+            double weight,
+            double modelLogLoss,
+            double marketLogLoss,
+            double blendLogLoss,
+            String verdict
+    ) {
+    }
+
+    /** One scored match: walk-forward model probabilities, market probabilities, outcome. */
+    private record Sample(double[] model, double[] market, int outcome) {
     }
 
     public BacktestResult runFootball(int historyDays, int stepDays, double trainFraction) {
@@ -157,6 +192,7 @@ public class BacktestService {
         int marketCorrect = 0;
         double overroundSum = 0;
         int marketMatches = 0;
+        List<Sample> samples = new ArrayList<>();
 
         int cursor = 0;
         while (cursor < test.size()) {
@@ -218,6 +254,7 @@ public class BacktestService {
                     overroundSum += 1 / odds.getMedianHome() + 1 / odds.getMedianDraw()
                             + 1 / odds.getMedianAway() - 1;
                     marketMatches++;
+                    samples.add(new Sample(p, market, actual));
                 }
             }
         }
@@ -262,7 +299,69 @@ public class BacktestService {
         return new BacktestResult(Sport.FOOTBALL.name(), splitIndex, scored, refits,
                 round(sumLogLoss / scored), round(sumBrier / scored), round((double) correct / scored),
                 round(baseLogLoss / scored), round(baseBrier / scored), round((double) baseCorrect / scored),
-                calibration, comparison);
+                calibration, comparison, blend(samples));
+    }
+
+    /**
+     * Fits the blend weight on the earlier half of the samples and scores every candidate on
+     * the later half, so the weight is never evaluated on data it was chosen from.
+     */
+    private BlendResult blend(List<Sample> samples) {
+        if (samples.size() < 200) {
+            return null;
+        }
+        int split = samples.size() / 2;
+        List<Sample> fit = samples.subList(0, split);
+        List<Sample> test = samples.subList(split, samples.size());
+
+        double bestWeight = 0;
+        double bestLoss = Double.MAX_VALUE;
+        for (int step = 0; step <= 50; step++) {
+            double weight = step / 50.0;
+            double loss = logLoss(fit, weight);
+            if (loss < bestLoss) {
+                bestLoss = loss;
+                bestWeight = weight;
+            }
+        }
+
+        double marketOnly = logLoss(test, 0.0);
+        double modelOnly = logLoss(test, 1.0);
+        double blended = logLoss(test, bestWeight);
+        double gain = marketOnly - blended;
+
+        String verdict;
+        if (bestWeight < 0.02) {
+            verdict = "fitted weight is ~0: the model carries no information the price lacks";
+        } else if (gain > 0) {
+            verdict = ("blend beats the market by %.4f nats/match on %d held-out matches "
+                    + "at weight %.2f - check this against the margin before believing it")
+                    .formatted(gain, test.size(), bestWeight);
+        } else {
+            verdict = ("blend does not beat the market out of sample (%.4f nats worse); the "
+                    + "weight fitted on earlier matches did not generalise")
+                    .formatted(-gain);
+        }
+
+        return new BlendResult(fit.size(), test.size(), round(bestWeight),
+                round(modelOnly), round(marketOnly), round(blended), verdict);
+    }
+
+    /** Log-linear pooling: p proportional to market^(1-w) * model^w, then normalised. */
+    private double logLoss(List<Sample> samples, double weight) {
+        double total = 0;
+        for (Sample sample : samples) {
+            double[] pooled = new double[sample.market().length];
+            double sum = 0;
+            for (int i = 0; i < pooled.length; i++) {
+                double market = Math.max(sample.market()[i], 1e-9);
+                double model = Math.max(sample.model()[i], 1e-9);
+                pooled[i] = Math.pow(market, 1 - weight) * Math.pow(model, weight);
+                sum += pooled[i];
+            }
+            total += -Math.log(Math.max(pooled[sample.outcome()] / sum, 1e-9));
+        }
+        return total / samples.size();
     }
 
     private double[] outcomeFrequencies(List<Fixture> matches) {
