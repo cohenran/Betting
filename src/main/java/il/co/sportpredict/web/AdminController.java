@@ -62,15 +62,29 @@ public class AdminController {
     public record AliasRequest(@NotBlank String rawName, Sport sport, Long teamId, String teamName) {
     }
 
+    /**
+     * @param providers restrict to these provider names. Needed when re-ingesting a range
+     *                  after widening the league list: without it the metered provider would
+     *                  be asked for every day in the range and exhaust its daily quota.
+     */
     @PostMapping("/ingest")
     public IngestService.IngestSummary ingest(@RequestHeader(value = "X-Admin-Token", required = false) String token,
                                               @RequestParam(required = false) LocalDate from,
                                               @RequestParam(required = false) LocalDate to,
-                                              @RequestParam(required = false) Set<Sport> sports) {
+                                              @RequestParam(required = false) Set<Sport> sports,
+                                              @RequestParam(required = false) List<String> providers) {
         authorize(token);
         LocalDate start = from != null ? from : LocalDate.now().minusDays(2);
         LocalDate end = to != null ? to : LocalDate.now().plusDays(props.getIngest().getLookaheadDays());
-        return ingest.ingestRange(start, end, sports == null ? EnumSet.allOf(Sport.class) : sports);
+        Set<Sport> wanted = sports == null ? EnumSet.allOf(Sport.class) : sports;
+
+        Map<Sport, List<String>> routing = Map.of();
+        if (providers != null && !providers.isEmpty()) {
+            Map<Sport, List<String>> whitelist = new LinkedHashMap<>();
+            wanted.forEach(sport -> whitelist.put(sport, providers));
+            routing = whitelist;
+        }
+        return ingest.ingestRange(start, end, wanted, routing);
     }
 
     @PostMapping("/learn")
