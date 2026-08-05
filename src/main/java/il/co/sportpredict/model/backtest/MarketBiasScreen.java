@@ -36,8 +36,17 @@ import java.util.Map;
 @Slf4j
 public class MarketBiasScreen {
 
-    /** Upper bound of each odds bucket; the last bucket catches everything above. */
+    /**
+     * Odds buckets, as ordered labels rather than reconstructed bounds.
+     *
+     * <p>Deriving the label back from the bound dropped the open-ended top bucket entirely -
+     * and that is precisely where longshot bias is strongest, so the report was missing the
+     * evidence it exists to look for.
+     */
     private static final double[] BUCKET_BOUNDS = {1.5, 2.0, 3.0, 5.0, 10.0, Double.MAX_VALUE};
+    private static final String[] BUCKET_LABELS = {
+            "odds 1.0-1.5", "odds 1.5-2.0", "odds 2.0-3.0",
+            "odds 3.0-5.0", "odds 5.0-10.0", "odds 10.0+"};
 
     private final MarketOddsRepository marketOdds;
 
@@ -126,8 +135,7 @@ public class MarketBiasScreen {
                 home.toRow("back home"), draw.toRow("back draw"), away.toRow("back away"));
 
         List<Row> bucketRows = new ArrayList<>();
-        for (double bound : BUCKET_BOUNDS) {
-            String label = bucketLabel(bound - 1e-9);
+        for (String label : BUCKET_LABELS) {
             Accumulator accumulator = buckets.get(label);
             if (accumulator != null && accumulator.bets > 0) {
                 bucketRows.add(accumulator.toRow(label));
@@ -188,16 +196,12 @@ public class MarketBiasScreen {
     }
 
     private String bucketLabel(double price) {
-        double previous = 1.0;
-        for (double bound : BUCKET_BOUNDS) {
-            if (price < bound) {
-                return bound == Double.MAX_VALUE
-                        ? "odds %.1f+".formatted(previous)
-                        : "odds %.1f-%.1f".formatted(previous, bound);
+        for (int i = 0; i < BUCKET_BOUNDS.length; i++) {
+            if (price < BUCKET_BOUNDS[i]) {
+                return BUCKET_LABELS[i];
             }
-            previous = bound;
         }
-        return "odds ?";
+        return BUCKET_LABELS[BUCKET_LABELS.length - 1];
     }
 
     private int outcomeIndex(Fixture fixture) {
